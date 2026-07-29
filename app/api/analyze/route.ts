@@ -2,12 +2,21 @@ import { NextResponse } from "next/server";
 import { storePrivatePdf } from "@/lib/cloudinary";
 import { saveProcess } from "@/lib/database";
 import { extractTopographicData } from "@/lib/openai-extraction";
+import { getAuthenticatedSession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
+    const session = await getAuthenticatedSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: "Sua sessão expirou. Entre novamente." },
+        { status: 401 },
+      );
+    }
+
     const form = await request.formData();
     const file = form.get("file");
     const supplementaryMessage = String(
@@ -47,6 +56,7 @@ export async function POST(request: Request) {
 
     const processId = await saveProcess({
       data,
+      createdByUserId: session.user.id,
       sourceUrl: stored?.url,
       sourcePublicId: stored?.publicId,
       supplementaryMessage,

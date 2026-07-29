@@ -4,11 +4,20 @@ import {
   isTopographicData,
   normalizeTopographicData,
 } from "@/lib/topographic";
+import { getAuthenticatedSession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    const session = await getAuthenticatedSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: "Sua sessão expirou. Entre novamente." },
+        { status: 401 },
+      );
+    }
+
     const body: unknown = await request.json();
     if (!isTopographicData(body)) {
       return NextResponse.json(

@@ -9,12 +9,14 @@ import {
   FileCheck2,
   FileText,
   LoaderCircle,
+  LogOut,
   MapPinned,
   RotateCcw,
   ShieldCheck,
   Sparkles,
   UploadCloud,
 } from "lucide-react";
+import { signOut } from "next-auth/react";
 import { useEffect, useMemo, useState } from "react";
 import {
   boundaryLabels,
@@ -112,7 +114,19 @@ function Section({
   );
 }
 
-export function Workspace() {
+type CurrentUser = {
+  name: string;
+  email: string;
+  role: "admin" | "operator" | "reviewer";
+};
+
+const roleLabels: Record<CurrentUser["role"], string> = {
+  admin: "Administrador",
+  operator: "Operador",
+  reviewer: "Revisor",
+};
+
+export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
   const [step, setStep] = useState<Step>("upload");
   const [file, setFile] = useState<File | null>(null);
   const [supplementaryMessage, setSupplementaryMessage] = useState("");
@@ -276,9 +290,25 @@ export function Workspace() {
             <span>Prefeitura de Coelho Neto</span>
           </div>
         </div>
-        <div className="topbar-status">
-          <ShieldCheck size={17} />
-          Ambiente interno
+        <div className="topbar-actions">
+          <div className="current-user">
+            <span className="user-avatar">
+              {currentUser.name.trim().charAt(0).toUpperCase() || "S"}
+            </span>
+            <span>
+              <strong>{currentUser.name}</strong>
+              <small>{roleLabels[currentUser.role]}</small>
+            </span>
+          </div>
+          <button
+            className="signout-button"
+            type="button"
+            onClick={() => signOut({ callbackUrl: "/entrar" })}
+            title="Sair do sistema"
+          >
+            <LogOut size={17} />
+            Sair
+          </button>
         </div>
       </header>
 

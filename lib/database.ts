@@ -12,6 +12,7 @@ import {
 
 type ProcessInput = {
   data: TopographicData;
+  createdByUserId: string;
   sourceUrl?: string;
   sourcePublicId?: string;
   supplementaryMessage?: string;
@@ -32,7 +33,7 @@ function fallbackReferenceData(): ReferenceData {
   };
 }
 
-function createDatabaseClient() {
+export function createDatabaseClient() {
   const databaseUrl = process.env.DATABASE_URL?.trim();
   if (!databaseUrl) return null;
   return postgres(databaseUrl, {
@@ -105,6 +106,7 @@ export async function saveProcess(input: ProcessInput): Promise<string | null> {
         lot_number,
         technical_responsible_id,
         works_inspector_id,
+        created_by_user_id,
         source_pdf_url,
         source_public_id,
         supplementary_message,
@@ -133,6 +135,7 @@ export async function saveProcess(input: ProcessInput): Promise<string | null> {
             limit 1
           )
         ),
+        ${input.createdByUserId}::uuid,
         ${input.sourceUrl || null},
         ${input.sourcePublicId || null},
         ${input.supplementaryMessage || null},

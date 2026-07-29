@@ -24,6 +24,20 @@ Abra `http://localhost:3000`.
 Sem variáveis externas, a interface pode ser testada com o botão **Usar exemplo**.
 Para analisar croquis reais, configure as variáveis descritas em `.env.example`.
 
+## Acesso institucional
+
+O sistema usa login com Google e permite somente e-mails ativos na tabela
+`app_users`. O administrador inicial é `semobicn.ia@gmail.com`.
+
+No Google Cloud, crie um cliente OAuth do tipo **Aplicativo da Web** e cadastre:
+
+- origem autorizada: `https://semobicn-ia.vercel.app`
+- redirecionamento autorizado:
+  `https://semobicn-ia.vercel.app/api/auth/callback/google`
+
+Na Vercel, configure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+`NEXTAUTH_SECRET`, `NEXTAUTH_URL` e `INITIAL_ADMIN_EMAIL`.
+
 ## Banco de dados
 
 Execute o conteúdo de `database/schema.sql` no editor SQL do Neon.

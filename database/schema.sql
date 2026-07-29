@@ -1,5 +1,30 @@
 create extension if not exists pgcrypto;
 
+create table if not exists app_users (
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
+  full_name text not null,
+  role text not null default 'operator',
+  active boolean not null default true,
+  picture_url text,
+  last_login_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint app_users_role_check
+    check (role in ('admin', 'operator', 'reviewer'))
+);
+
+create unique index if not exists app_users_email_idx
+  on app_users (lower(email));
+
+insert into app_users (email, full_name, role)
+values (
+  'semobicn.ia@gmail.com',
+  'Administrador SEMOBICN IA',
+  'admin'
+)
+on conflict do nothing;
+
 create table if not exists sex_options (
   code text primary key,
   label text not null,
@@ -77,6 +102,7 @@ create table if not exists topographic_processes (
   lot_number text,
   technical_responsible_id uuid references municipal_staff (id),
   works_inspector_id uuid references municipal_staff (id),
+  created_by_user_id uuid references app_users (id),
   source_pdf_url text,
   source_public_id text,
   supplementary_message text,
@@ -91,7 +117,9 @@ alter table topographic_processes
   add column if not exists technical_responsible_id uuid
     references municipal_staff (id),
   add column if not exists works_inspector_id uuid
-    references municipal_staff (id);
+    references municipal_staff (id),
+  add column if not exists created_by_user_id uuid
+    references app_users (id);
 
 update topographic_processes
 set technical_responsible_id = (
@@ -118,3 +146,6 @@ create index if not exists topographic_processes_created_at_idx
 
 create index if not exists topographic_processes_claimant_sex_idx
   on topographic_processes (claimant_sex_code);
+
+create index if not exists topographic_processes_created_by_idx
+  on topographic_processes (created_by_user_id);
