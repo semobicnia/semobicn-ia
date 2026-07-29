@@ -18,7 +18,9 @@ const A4 = { width: 595.28, height: 841.89 };
 const MARGIN = 43;
 const TEXT_WIDTH = A4.width - MARGIN * 2;
 const BODY_SIZE = 11;
-const BODY_LINE_HEIGHT = 14.7;
+const BODY_LINE_HEIGHT = BODY_SIZE * 1.5;
+const SECTION_TEXT_SPACING = BODY_SIZE;
+const TOP_MARGIN = 15 * 0.75;
 const BLACK = rgb(0.035, 0.035, 0.035);
 const BLUE = rgb(0.02, 0.3, 0.7);
 
@@ -244,46 +246,65 @@ export async function createTopographicPdf(data: TopographicData) {
   const holder = feminine ? "portadora" : "portador";
   const domiciled = feminine ? "domiciliada" : "domiciliado";
 
-  const semobiWidth = 206;
+  const headerTop = A4.height - TOP_MARGIN;
+  const logoWidth = 156;
+  const logoGap = 14;
+  const headerCenter = A4.width / 2;
+  const semobiWidth = logoWidth;
   const semobiHeight = (semobiLogo.height / semobiLogo.width) * semobiWidth;
-  const cityWidth = 196;
+  const cityWidth = logoWidth;
   const cityHeight = (cityLogo.height / cityLogo.width) * cityWidth;
   page.drawImage(semobiLogo, {
-    x: 63,
-    y: 773,
+    x: headerCenter - logoGap - semobiWidth,
+    y: headerTop - semobiHeight,
     width: semobiWidth,
     height: semobiHeight,
   });
   page.drawLine({
-    start: { x: 282, y: 777 },
-    end: { x: 282, y: 824 },
+    start: { x: headerCenter, y: headerTop - cityHeight },
+    end: { x: headerCenter, y: headerTop },
     thickness: 1.25,
     color: BLUE,
   });
   page.drawImage(cityLogo, {
-    x: 300,
-    y: 771,
+    x: headerCenter + logoGap,
+    y: headerTop - cityHeight,
     width: cityWidth,
     height: cityHeight,
   });
+  const headerRuleY = headerTop - cityHeight - 11;
   page.drawLine({
-    start: { x: MARGIN, y: 755 },
-    end: { x: A4.width - MARGIN, y: 755 },
+    start: { x: MARGIN, y: headerRuleY },
+    end: { x: A4.width - MARGIN, y: headerRuleY },
     thickness: 0.65,
     color: BLACK,
   });
 
+  const watermarkText = "SEMOBI";
+  const watermarkSize = 76;
+  const watermarkAngle = 51;
+  const watermarkWidth = fonts.bold.widthOfTextAtSize(
+    watermarkText,
+    watermarkSize,
+  );
+  const watermarkRadians = (watermarkAngle * Math.PI) / 180;
+  const watermarkCenterOffsetX =
+    (watermarkWidth / 2) * Math.cos(watermarkRadians) -
+    (watermarkSize / 2) * Math.sin(watermarkRadians);
+  const watermarkCenterOffsetY =
+    (watermarkWidth / 2) * Math.sin(watermarkRadians) +
+    (watermarkSize / 2) * Math.cos(watermarkRadians);
   page.drawText("SEMOBI", {
-    x: 138,
-    y: 238,
-    size: 76,
+    x: A4.width / 2 - watermarkCenterOffsetX,
+    y: A4.height / 2 - watermarkCenterOffsetY,
+    size: watermarkSize,
     font: fonts.bold,
     color: rgb(0.95, 0.95, 0.95),
-    rotate: degrees(51),
+    rotate: degrees(watermarkAngle),
   });
 
-  let y = 716;
-  y = drawHeading(page, "1 - INFORMAÇÕES TOPOGRÁFICAS", y, fonts);
+  let y = headerRuleY - 39;
+  y = drawHeading(page, "1 - INFORMAÇÕES TOPOGRÁFICAS:", y, fonts);
   y = drawRichParagraph(
     page,
     [
@@ -307,9 +328,9 @@ export async function createTopographicPdf(data: TopographicData) {
     fonts,
     { justify: true },
   );
-  y -= 7;
+  y -= SECTION_TEXT_SPACING;
 
-  y = drawHeading(page, "2 - SITUAÇÃO", y, fonts);
+  y = drawHeading(page, "2 - SITUAÇÃO:", y, fonts);
   const situationSpans: RichSpan[] = [
     {
       text: `${data.propertyAddress.toUpperCase()},`,
@@ -343,16 +364,9 @@ export async function createTopographicPdf(data: TopographicData) {
   }
   situationSpans.push({ text: `${data.city} - ${data.state}.` });
   y = drawRichParagraph(page, situationSpans, y, fonts, { justify: false });
-  y -= 18;
+  y -= SECTION_TEXT_SPACING;
 
-  y = drawRichParagraph(
-    page,
-    [{ text: "Com os seguintes limite e :", font: "bold", italic: true }],
-    y,
-    fonts,
-    { justify: false, size: 11.2 },
-  );
-  y -= 4;
+  y = drawHeading(page, "3 - LIMITES E CONFRONTANTES:", y, fonts);
 
   const boundarySpans: RichSpan[] = [];
   data.boundaries.forEach((boundary, index) => {
@@ -376,11 +390,11 @@ export async function createTopographicPdf(data: TopographicData) {
   }
   y = drawRichParagraph(page, boundarySpans, y, fonts, {
     justify: true,
-    lineHeight: 15.1,
+    lineHeight: BODY_LINE_HEIGHT,
   });
-  y -= 7;
+  y -= SECTION_TEXT_SPACING;
 
-  y = drawHeading(page, "3 - UTILIZAÇÃO", y, fonts);
+  y = drawHeading(page, "4 - UTILIZAÇÃO:", y, fonts);
   const building =
     data.builtArea && data.builtArea > 0
       ? `${formatNumber(data.builtArea)}m²${
@@ -397,7 +411,6 @@ export async function createTopographicPdf(data: TopographicData) {
     fonts,
     { justify: false, size: 11 },
   );
-  y -= 3;
   y = drawRichParagraph(
     page,
     [
@@ -408,7 +421,6 @@ export async function createTopographicPdf(data: TopographicData) {
     fonts,
     { justify: false, size: 11 },
   );
-  y -= 3;
   y = drawRichParagraph(
     page,
     [
@@ -419,6 +431,7 @@ export async function createTopographicPdf(data: TopographicData) {
     fonts,
     { justify: true, size: 11 },
   );
+  y -= SECTION_TEXT_SPACING;
 
   const dateLine = `${data.city} (${data.state}), ${formatDate(data.documentDate)}.`;
   const dateWidth = fonts.regular.widthOfTextAtSize(dateLine, 11);
