@@ -35,7 +35,6 @@ type RichSpan = {
   text: string;
   font?: FontStyle;
   italic?: boolean;
-  underline?: boolean;
 };
 
 type RichToken = Omit<RichSpan, "text"> & {
@@ -77,7 +76,6 @@ function toTokens(spans: RichSpan[], fonts: Fonts, size: number) {
         text: word,
         font: span.font,
         italic: span.italic,
-        underline: span.underline,
         width: font.widthOfTextAtSize(word, size),
       });
     }
@@ -149,14 +147,6 @@ function drawRichParagraph(
         font,
         color: BLACK,
       });
-      if (token.underline) {
-        page.drawLine({
-          start: { x, y: baseline - 1.6 },
-          end: { x: x + token.width, y: baseline - 1.6 },
-          thickness: 0.72,
-          color: BLACK,
-        });
-      }
       x += token.width + (tokenIndex < line.length - 1 ? spaceWidth : 0);
     });
   });
@@ -207,9 +197,9 @@ function boundarySentence(
   return [
     { text: boundaryName(boundary.side), font: "bold" },
     { text: "limitando-se com" },
-    { text: label, font: "bold", italic: true, underline: true },
+    { text: label, font: "bold" },
     { text: "medindo:" },
-    { text: `${measurement};`, font: "bold", italic: true, underline: true },
+    { text: `${measurement};`, font: "bold" },
     {
       text: measurementWords
         ? `${measurementWords.slice(2)}${endMark}`
@@ -335,8 +325,6 @@ export async function createTopographicPdf(data: TopographicData) {
       {
         text: `${data.claimantName.toUpperCase()},`,
         font: "bold",
-        italic: true,
-        underline: true,
       },
       { text: `${data.nationality}, ${holder} do` },
       {
@@ -358,21 +346,18 @@ export async function createTopographicPdf(data: TopographicData) {
     {
       text: `${data.propertyAddress.toUpperCase()},`,
       font: "bold",
-      underline: true,
     },
   ];
   if (data.block) {
     situationSpans.push({
       text: `QUADRA: ${data.block},`,
       font: "bold",
-      underline: true,
     });
   }
   if (data.lot) {
     situationSpans.push({
       text: `LOTE: ${data.lot},`,
       font: "bold",
-      underline: true,
     });
   }
   if (data.neighborhood) {
@@ -381,7 +366,6 @@ export async function createTopographicPdf(data: TopographicData) {
       {
         text: `${data.neighborhood.toUpperCase()},`,
         font: "bold",
-        underline: true,
       },
     );
   }
@@ -406,7 +390,7 @@ export async function createTopographicPdf(data: TopographicData) {
   })}m²;`;
   boundarySpans.push(
     { text: "Perfazendo uma área total equivalente a" },
-    { text: landArea, font: "bold", italic: true, underline: true },
+    { text: landArea, font: "bold" },
   );
   if (data.landAreaInWords) {
     boundarySpans.push({ text: `(${data.landAreaInWords}).` });
