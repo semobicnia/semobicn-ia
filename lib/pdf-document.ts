@@ -246,33 +246,56 @@ export async function createTopographicPdf(data: TopographicData) {
   const holder = feminine ? "portadora" : "portador";
   const domiciled = feminine ? "domiciliada" : "domiciliado";
 
-  const headerTop = A4.height - TOP_MARGIN;
-  const logoWidth = 156;
+  const visibleLogoTop = A4.height - TOP_MARGIN;
   const logoGap = 14;
   const headerCenter = A4.width / 2;
-  const semobiWidth = logoWidth;
+  const semobiWidth = 132;
   const semobiHeight = (semobiLogo.height / semobiLogo.width) * semobiWidth;
-  const cityWidth = logoWidth;
+  const cityWidth = 156;
   const cityHeight = (cityLogo.height / cityLogo.width) * cityWidth;
+  // Os arquivos possuem margens brancas internas diferentes. Estes limites
+  // representam a área realmente desenhada em cada PNG e mantêm os pixels
+  // visíveis alinhados, sem alterar a proporção original das imagens.
+  const semobiScale = semobiWidth / semobiLogo.width;
+  const cityScale = cityWidth / cityLogo.width;
+  const semobiVisible = {
+    left: 16 * semobiScale,
+    top: 23 * semobiScale,
+    right: 824 * semobiScale,
+    bottom: 245 * semobiScale,
+  };
+  const cityVisible = {
+    left: 0,
+    top: 47 * cityScale,
+    right: 418 * cityScale,
+    bottom: 152 * cityScale,
+  };
+  const semobiCanvasTop = visibleLogoTop + semobiVisible.top;
+  const cityCanvasTop = visibleLogoTop + cityVisible.top;
+  const semobiX = headerCenter - logoGap - semobiVisible.right;
+  const cityX = headerCenter + logoGap - cityVisible.left;
   page.drawImage(semobiLogo, {
-    x: headerCenter - logoGap - semobiWidth,
-    y: headerTop - semobiHeight,
+    x: semobiX,
+    y: semobiCanvasTop - semobiHeight,
     width: semobiWidth,
     height: semobiHeight,
   });
+  const semobiVisibleBottom = semobiCanvasTop - semobiVisible.bottom;
+  const cityVisibleBottom = cityCanvasTop - cityVisible.bottom;
+  const visibleLogoBottom = Math.min(semobiVisibleBottom, cityVisibleBottom);
   page.drawLine({
-    start: { x: headerCenter, y: headerTop - cityHeight },
-    end: { x: headerCenter, y: headerTop },
+    start: { x: headerCenter, y: visibleLogoBottom },
+    end: { x: headerCenter, y: visibleLogoTop },
     thickness: 1.25,
     color: BLUE,
   });
   page.drawImage(cityLogo, {
-    x: headerCenter + logoGap,
-    y: headerTop - cityHeight,
+    x: cityX,
+    y: cityCanvasTop - cityHeight,
     width: cityWidth,
     height: cityHeight,
   });
-  const headerRuleY = headerTop - cityHeight - 11;
+  const headerRuleY = visibleLogoBottom - 11;
   page.drawLine({
     start: { x: MARGIN, y: headerRuleY },
     end: { x: A4.width - MARGIN, y: headerRuleY },
