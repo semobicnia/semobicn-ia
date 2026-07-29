@@ -2,13 +2,15 @@
 
 import {
   Download,
+  FileDown,
   ImagePlus,
-  Printer,
+  LoaderCircle,
   RotateCcw,
   Save,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { PDFDocument } from "pdf-lib";
+import { useEffect, useMemo, useState } from "react";
 import { AppHeader, type HeaderUser } from "./app-header";
 import {
   buildSketchGeometry,
@@ -25,6 +27,7 @@ type Props = {
   processId?: string;
   data: TopographicData;
   initialSettings?: UrbanSketchSettings | null;
+  initialLocationImageUrl?: string;
 };
 
 function svgToDownload(svg: SVGSVGElement, filename: string) {
@@ -36,6 +39,29 @@ function svgToDownload(svg: SVGSVGElement, filename: string) {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function readFileAsDataUrl(file: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      typeof reader.result === "string"
+        ? resolve(reader.result)
+        : reject(new Error("Formato de imagem inválido."));
+    reader.onerror = () => reject(new Error("Não foi possível ler a imagem."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function safeFilename(value: string) {
+  return (
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .toLowerCase() || "imovel"
+  );
 }
 
 function wrapText(text: string, maxLength: number, maxLines: number) {
@@ -70,12 +96,15 @@ export function CroquiWorkspace({
   processId,
   data,
   initialSettings,
+  initialLocationImageUrl,
 }: Props) {
   const [settings, setSettings] = useState<UrbanSketchSettings>(
     initialSettings ?? defaultUrbanSketchSettings,
   );
   const [locationImage, setLocationImage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   const [message, setMessage] = useState("");
   const geometry = useMemo(
     () => buildSketchGeometry(data, settings),
@@ -98,6 +127,26 @@ export function CroquiWorkspace({
     .toUpperCase();
   const descriptionLines = wrapText(description, 62, 2);
 
+  useEffect(() => {
+    if (!initialLocationImageUrl) return;
+    let active = true;
+    fetch(initialLocationImageUrl, { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) throw new Error("Imagem de localização indisponível.");
+        return response.blob();
+      })
+      .then(readFileAsDataUrl)
+      .then((dataUrl) => {
+        if (active) setLocationImage(dataUrl);
+      })
+      .catch(() => {
+        if (active) setMessage("Não foi possível carregar a imagem armazenada.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [initialLocationImageUrl]);
+
   function updateSetting<K extends keyof UrbanSketchSettings>(
     key: K,
     value: UrbanSketchSettings[K],
@@ -105,12 +154,105 @@ export function CroquiWorkspace({
     setSettings((current) => ({ ...current, [key]: value }));
   }
 
-  function selectLocationImage(file: File | null) {
+  async function selectLocationImage(file: File | null) {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () =>
-      setLocationImage(typeof reader.result === "string" ? reader.result : null);
-    reader.readAsDataURL(file);
+    setUploadingImage(true);
+    setMessage("");
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setLocationImage(dataUrl);
+      if (!processId) {
+        setMessage("Imagem aplicada somente ao modelo de demonstração.");
+        return;
+      }
+      const form = new FormData();
+      form.append("processId", processId);
+      form.append("file", file);
+      const response = await fetch("/api/croquis/image", {
+        method: "POST",
+        body: form,
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(result.error || "Não foi possível armazenar a imagem.");
+      }
+      setMessage("Imagem de localização armazenada no processo.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível armazenar a imagem.",
+      );
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  async function generateA4Pdf() {
+    const svg = document.querySelector<SVGSVGElement>("#urban-sketch-svg");
+    if (!svg) return;
+    setGeneratingPdf(true);
+    setMessage("");
+    let svgUrl = "";
+    try {
+      const source = new XMLSerializer().serializeToString(svg);
+      svgUrl = URL.createObjectURL(
+        new Blob([source], { type: "image/svg+xml;charset=utf-8" }),
+      );
+      const image = new Image();
+      image.src = svgUrl;
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("Não foi possível renderizar o croqui."));
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = 1190;
+      canvas.height = 1684;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Não foi possível preparar o PDF.");
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const pngBlob = await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob(
+          (blob) =>
+            blob ? resolve(blob) : reject(new Error("Falha ao montar a página A4.")),
+          "image/png",
+        ),
+      );
+
+      const pdf = await PDFDocument.create();
+      pdf.setTitle(`Croqui urbano - ${data.claimantName}`);
+      pdf.setAuthor("SEMOBI - Prefeitura de Coelho Neto");
+      const page = pdf.addPage([595.28, 841.89]);
+      const png = await pdf.embedPng(await pngBlob.arrayBuffer());
+      page.drawImage(png, {
+        x: 0,
+        y: 0,
+        width: page.getWidth(),
+        height: page.getHeight(),
+      });
+      const bytes = await pdf.save();
+      const url = URL.createObjectURL(
+        new Blob([Uint8Array.from(bytes).buffer as ArrayBuffer], {
+          type: "application/pdf",
+        }),
+      );
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `croqui-urbano-${safeFilename(data.claimantName)}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setMessage("PDF A4 gerado com sucesso.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Não foi possível gerar o PDF.",
+      );
+    } finally {
+      if (svgUrl) URL.revokeObjectURL(svgUrl);
+      setGeneratingPdf(false);
+    }
   }
 
   async function saveSketch() {
@@ -163,9 +305,11 @@ export function CroquiWorkspace({
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
                 onChange={(event) =>
-                  selectLocationImage(event.target.files?.[0] ?? null)
+                  void selectLocationImage(event.target.files?.[0] ?? null)
                 }
+                disabled={uploadingImage}
               />
+              {uploadingImage ? " Armazenando..." : null}
             </span>
           </label>
 
@@ -245,11 +389,16 @@ export function CroquiWorkspace({
             </button>
             <button
               className="button secondary"
-              onClick={() => window.print()}
+              onClick={() => void generateA4Pdf()}
               type="button"
+              disabled={generatingPdf}
             >
-              <Printer size={17} />
-              Imprimir / PDF
+              {generatingPdf ? (
+                <LoaderCircle className="spin" size={17} />
+              ) : (
+                <FileDown size={17} />
+              )}
+              {generatingPdf ? "Gerando PDF..." : "Gerar PDF A4"}
             </button>
             <button
               className="button secondary"

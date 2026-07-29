@@ -224,6 +224,8 @@ create table if not exists urban_sketches (
     references topographic_processes (id) on delete cascade,
   created_by_user_id uuid references app_users (id),
   settings jsonb not null default '{}'::jsonb,
+  location_image_public_id text,
+  location_image_format text,
   status text not null default 'review',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -233,3 +235,9 @@ create table if not exists urban_sketches (
 
 create index if not exists urban_sketches_created_at_idx
   on urban_sketches (created_at desc);
+
+alter table urban_sketches
+  add column if not exists location_image_public_id text;
+
+alter table urban_sketches
+  add column if not exists location_image_format text;

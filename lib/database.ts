@@ -84,6 +84,7 @@ export type UrbanSketchRecord = {
   id: string;
   processId: string;
   settings: UrbanSketchSettings;
+  locationImageAvailable: boolean;
   status: "review" | "finalized";
   updatedAt: string;
 };
@@ -179,11 +180,18 @@ export async function getUrbanSketch(
         id: string;
         process_id: string;
         settings: Partial<UrbanSketchSettings>;
+        location_image_public_id: string | null;
         status: "review" | "finalized";
         updated_at: Date | string;
       }[]
     >`
-      select id, process_id, settings, status, updated_at
+      select
+        id,
+        process_id,
+        settings,
+        location_image_public_id,
+        status,
+        updated_at
       from urban_sketches
       where process_id = ${processId}::uuid
       limit 1
@@ -196,12 +204,109 @@ export async function getUrbanSketch(
         ...defaultUrbanSketchSettings,
         ...row.settings,
       },
+      locationImageAvailable: Boolean(row.location_image_public_id),
       status: row.status,
       updatedAt:
         row.updated_at instanceof Date
           ? row.updated_at.toISOString()
           : new Date(row.updated_at).toISOString(),
     };
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function getUrbanSketchImage(input: {
+  processId: string;
+  userId: string;
+  role: "admin" | "operator" | "reviewer";
+}): Promise<{ publicId: string; format: string } | null> {
+  const sql = createDatabaseClient();
+  if (!sql) return null;
+
+  try {
+    const [row] = await sql<
+      { public_id: string | null; format: string | null }[]
+    >`
+      select
+        sketch.location_image_public_id as public_id,
+        sketch.location_image_format as format
+      from urban_sketches sketch
+      join topographic_processes process on process.id = sketch.process_id
+      where sketch.process_id = ${input.processId}::uuid
+        and (
+          ${input.role} <> 'operator'
+          or process.created_by_user_id = ${input.userId}::uuid
+        )
+      limit 1
+    `;
+    if (!row?.public_id || !row.format) return null;
+    return { publicId: row.public_id, format: row.format };
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function saveUrbanSketchImage(input: {
+  processId: string;
+  userId: string;
+  role: "admin" | "operator" | "reviewer";
+  publicId: string;
+  format: string;
+}): Promise<boolean> {
+  const sql = createDatabaseClient();
+  if (!sql) return false;
+
+  try {
+    const [allowed] = await sql<{ id: string }[]>`
+      select process.id
+      from topographic_processes process
+      where process.id = ${input.processId}::uuid
+        and (
+          ${input.role} <> 'operator'
+          or process.created_by_user_id = ${input.userId}::uuid
+        )
+      limit 1
+    `;
+    if (!allowed) return false;
+
+    await sql`
+      insert into urban_sketches (
+        process_id,
+        created_by_user_id,
+        settings,
+        location_image_public_id,
+        location_image_format
+      ) values (
+        ${input.processId}::uuid,
+        ${input.userId}::uuid,
+        ${sql.json(defaultUrbanSketchSettings)},
+        ${input.publicId},
+        ${input.format}
+      )
+      on conflict (process_id) do update
+      set
+        location_image_public_id = excluded.location_image_public_id,
+        location_image_format = excluded.location_image_format,
+        updated_at = now()
+    `;
+
+    await sql`
+      insert into process_events (
+        process_id,
+        user_id,
+        action,
+        description,
+        metadata
+      ) values (
+        ${input.processId}::uuid,
+        ${input.userId}::uuid,
+        'sketch_saved',
+        'Imagem de localização do croqui armazenada.',
+        ${sql.json({ format: input.format })}
+      )
+    `;
+    return true;
   } finally {
     await sql.end();
   }

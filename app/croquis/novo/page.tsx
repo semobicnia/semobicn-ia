@@ -47,6 +47,11 @@ export default async function NewUrbanSketchPage({
       processId={process.id}
       data={process.data}
       initialSettings={sketch?.settings}
+      initialLocationImageUrl={
+        sketch?.locationImageAvailable
+          ? `/api/croquis/image?processo=${process.id}`
+          : undefined
+      }
     />
   );
 }

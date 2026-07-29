@@ -5,6 +5,10 @@ type StoredFile = {
   publicId: string;
 };
 
+export type StoredImage = StoredFile & {
+  format: string;
+};
+
 export async function storePrivatePdf(
   file: File,
   bytes: Uint8Array,
@@ -47,6 +51,53 @@ export async function storePrivatePdf(
   return { url: result.secure_url, publicId: result.public_id };
 }
 
+export async function storePrivateImage(
+  file: File,
+  bytes: Uint8Array,
+): Promise<StoredImage | null> {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+  if (!cloudName || !apiKey || !apiSecret) return null;
+
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const folder = "semobicn/localizacoes";
+  const type = "authenticated";
+  const signatureBase = `folder=${folder}&timestamp=${timestamp}&type=${type}${apiSecret}`;
+  const signature = createHash("sha1").update(signatureBase).digest("hex");
+  const form = new FormData();
+  const uploadBytes = Uint8Array.from(bytes);
+  form.append(
+    "file",
+    new Blob([uploadBytes.buffer], { type: file.type }),
+    file.name,
+  );
+  form.append("api_key", apiKey);
+  form.append("timestamp", timestamp);
+  form.append("folder", folder);
+  form.append("type", type);
+  form.append("signature", signature);
+
+  const response = await fetch(
+    `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+    { method: "POST", body: form },
+  );
+  if (!response.ok) {
+    throw new Error("Falha ao armazenar a imagem de localização.");
+  }
+
+  const result = (await response.json()) as {
+    secure_url: string;
+    public_id: string;
+    format: string;
+  };
+  return {
+    url: result.secure_url,
+    publicId: result.public_id,
+    format: result.format,
+  };
+}
+
 function encodePublicId(publicId: string) {
   return publicId
     .split("/")
@@ -64,4 +115,20 @@ export function getSignedPrivatePdfUrl(publicId: string): string | null {
     .digest("base64url")
     .slice(0, 8);
   return `https://res.cloudinary.com/${encodeURIComponent(cloudName)}/raw/authenticated/s--${signature}--/${encodePublicId(publicId)}`;
+}
+
+export function getSignedPrivateImageUrl(
+  publicId: string,
+  format: string,
+): string | null {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+  if (!cloudName || !apiSecret || !publicId || !format) return null;
+
+  const deliveryId = `${publicId}.${format}`;
+  const signature = createHash("sha1")
+    .update(`${deliveryId}${apiSecret}`)
+    .digest("base64url")
+    .slice(0, 8);
+  return `https://res.cloudinary.com/${encodeURIComponent(cloudName)}/image/authenticated/s--${signature}--/${encodePublicId(publicId)}.${encodeURIComponent(format)}`;
 }
