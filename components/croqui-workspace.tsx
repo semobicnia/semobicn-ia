@@ -43,7 +43,8 @@ function wrapText(text: string, maxLength: number, maxLines: number) {
   const lines: string[] = [];
   let line = "";
 
-  for (const word of words) {
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
     const candidate = line ? `${line} ${word}` : word;
     if (candidate.length <= maxLength) {
       line = candidate;
@@ -51,7 +52,14 @@ function wrapText(text: string, maxLength: number, maxLines: number) {
     }
     if (line) lines.push(line);
     line = word;
-    if (lines.length === maxLines - 1) break;
+    if (lines.length === maxLines - 1) {
+      const remaining = [line, ...words.slice(index + 1)].join(" ");
+      line =
+        remaining.length > maxLength
+          ? `${remaining.slice(0, maxLength - 1).trimEnd()}…`
+          : remaining;
+      break;
+    }
   }
   if (line && lines.length < maxLines) lines.push(line);
   return lines;
@@ -354,34 +362,34 @@ export function CroquiWorkspace({
             <text x={(bottomLeft.x + bottomRight.x) / 2} y={bottomLeft.y + 34} textAnchor="middle" fontSize="11">
               {formatMeasurement(measurements.front)}
             </text>
-            <line x1={topLeft.x} y1={topLeft.y - 18} x2={topRight.x} y2={topRight.y - 18} stroke="#111" />
-            <text x={(topLeft.x + topRight.x) / 2} y={topLeft.y - 25} textAnchor="middle" fontSize="11">
+            <line x1={topLeft.x} y1={topLeft.y - 8} x2={topRight.x} y2={topRight.y - 8} stroke="#111" />
+            <text x={(topLeft.x + topRight.x) / 2} y={topLeft.y - 12} textAnchor="middle" fontSize="10">
               {formatMeasurement(measurements.back)}
             </text>
             <text
-              x={bottomRight.x + 26}
+              x={bottomRight.x + 12}
               y={(bottomRight.y + topRight.y) / 2}
               fontSize="11"
-              transform={`rotate(75 ${bottomRight.x + 26} ${(bottomRight.y + topRight.y) / 2})`}
+              transform={`rotate(75 ${bottomRight.x + 12} ${(bottomRight.y + topRight.y) / 2})`}
             >
               {formatMeasurement(measurements.right)}
             </text>
             <text
-              x={bottomLeft.x - 23}
+              x={bottomLeft.x - 8}
               y={(bottomLeft.y + topLeft.y) / 2}
               fontSize="11"
-              transform={`rotate(75 ${bottomLeft.x - 23} ${(bottomLeft.y + topLeft.y) / 2})`}
+              transform={`rotate(75 ${bottomLeft.x - 8} ${(bottomLeft.y + topLeft.y) / 2})`}
             >
               {formatMeasurement(measurements.left)}
             </text>
 
-            <text x="300" y={topLeft.y - 43} textAnchor="middle" fontSize="10">
+            <text x="300" y={topLeft.y + 15} textAnchor="middle" fontSize="9">
               {getSketchConfrontant(data, "back").toUpperCase()}
             </text>
             <text x={topRight.x + 50} y={(topRight.y + bottomRight.y) / 2} fontSize="10" transform={`rotate(75 ${topRight.x + 50} ${(topRight.y + bottomRight.y) / 2})`}>
               {getSketchConfrontant(data, "right").toUpperCase()}
             </text>
-            <text x={topLeft.x - 47} y={(topLeft.y + bottomLeft.y) / 2} textAnchor="middle" fontSize="10" transform={`rotate(75 ${topLeft.x - 47} ${(topLeft.y + bottomLeft.y) / 2})`}>
+            <text x={topLeft.x - 42} y={(topLeft.y + bottomLeft.y) / 2} textAnchor="middle" fontSize="10" transform={`rotate(75 ${topLeft.x - 42} ${(topLeft.y + bottomLeft.y) / 2})`}>
               {getSketchConfrontant(data, "left").toUpperCase()}
             </text>
 
@@ -402,9 +410,9 @@ export function CroquiWorkspace({
             <line x1="180" y1="712" x2="180" y2="824" stroke="#111" />
             <line x1="460" y1="712" x2="460" y2="824" stroke="#111" />
             <line x1="180" y1="764" x2="460" y2="764" stroke="#111" />
-            <text x="99" y="753" textAnchor="middle" fontSize="24" fontWeight="900" fill="#0874bd">COELHO NETO</text>
-            <text x="99" y="777" textAnchor="middle" fontSize="18" fontWeight="900" fill="#0874bd">SEMOBI</text>
-            <text x="99" y="794" textAnchor="middle" fontSize="6" fontWeight="700">SECRETARIA MUNICIPAL DE OBRAS E INFRAESTRUTURA</text>
+            <text x="99" y="753" textAnchor="middle" fontSize="20" fontWeight="900" fill="#0874bd">COELHO NETO</text>
+            <text x="99" y="777" textAnchor="middle" fontSize="16" fontWeight="900" fill="#0874bd">SEMOBI</text>
+            <text x="99" y="794" textAnchor="middle" fontSize="4.7" fontWeight="700">SECRETARIA MUNICIPAL DE OBRAS E INFRAESTRUTURA</text>
             <text x="188" y="727" fontSize="9" fontWeight="700">CROQUI DE TERRENO URBANO</text>
             {descriptionLines.map((line, index) => (
               <text key={line} x="188" y={740 + index * 10} fontSize="6.5">
