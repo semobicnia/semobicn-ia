@@ -38,6 +38,25 @@ function svgToDownload(svg: SVGSVGElement, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function wrapText(text: string, maxLength: number, maxLines: number) {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let line = "";
+
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (candidate.length <= maxLength) {
+      line = candidate;
+      continue;
+    }
+    if (line) lines.push(line);
+    line = word;
+    if (lines.length === maxLines - 1) break;
+  }
+  if (line && lines.length < maxLines) lines.push(line);
+  return lines;
+}
+
 export function CroquiWorkspace({
   currentUser,
   processId,
@@ -69,6 +88,7 @@ export function CroquiWorkspace({
     .filter(Boolean)
     .join(", ")
     .toUpperCase();
+  const descriptionLines = wrapText(description, 62, 2);
 
   function updateSetting<K extends keyof UrbanSketchSettings>(
     key: K,
@@ -365,36 +385,40 @@ export function CroquiWorkspace({
               {getSketchConfrontant(data, "left").toUpperCase()}
             </text>
 
-            <path d={`M65 ${bottomLeft.y + 62} Q300 ${bottomLeft.y + 24} 540 ${bottomRight.y + 56}`} fill="none" stroke="#111" strokeWidth="2" />
-            <path d={`M65 ${bottomLeft.y + 102} Q300 ${bottomLeft.y + 64} 540 ${bottomRight.y + 96}`} fill="none" stroke="#111" strokeWidth="2" />
-            <text x="300" y={bottomLeft.y + 88} textAnchor="middle" fontSize="12">
+            <path d={`M65 ${bottomLeft.y + 48} Q300 ${bottomLeft.y + 16} 540 ${bottomRight.y + 42}`} fill="none" stroke="#111" strokeWidth="2" />
+            <path d={`M65 ${bottomLeft.y + 84} Q300 ${bottomLeft.y + 52} 540 ${bottomRight.y + 78}`} fill="none" stroke="#111" strokeWidth="2" />
+            <text x="300" y={bottomLeft.y + 72} textAnchor="middle" fontSize="12">
               {getSketchConfrontant(data, "front").toUpperCase()}
             </text>
-            <text x="35" y="708" fontSize="12">Escala: {settings.scale}</text>
+            <text x="35" y="682" fontSize="12">Escala: {settings.scale}</text>
 
             {settings.approximationNotice && (
-              <text x="300" y="728" textAnchor="middle" fontSize="7" fill="#606b72">
+              <text x="300" y="702" textAnchor="middle" fontSize="7" fill="#606b72">
                 REPRESENTAÇÃO GRÁFICA APROXIMADA COM BASE NAS MEDIDAS INFORMADAS
               </text>
             )}
 
-            <rect x="18" y="738" width="559" height="86" fill="white" stroke="#111" />
-            <line x1="180" y1="738" x2="180" y2="824" stroke="#111" />
-            <line x1="460" y1="738" x2="460" y2="824" stroke="#111" />
-            <line x1="180" y1="772" x2="460" y2="772" stroke="#111" />
-            <text x="99" y="775" textAnchor="middle" fontSize="24" fontWeight="900" fill="#0874bd">COELHO NETO</text>
-            <text x="99" y="795" textAnchor="middle" fontSize="18" fontWeight="900" fill="#0874bd">SEMOBI</text>
-            <text x="99" y="808" textAnchor="middle" fontSize="6" fontWeight="700">SECRETARIA MUNICIPAL DE OBRAS E INFRAESTRUTURA</text>
-            <text x="188" y="751" fontSize="9" fontWeight="700">CROQUI DE TERRENO URBANO</text>
-            <text x="188" y="763" fontSize="7">{description.slice(0, 74)}</text>
-            <text x="188" y="784" fontSize="7">POSSEIRO(A):</text>
-            <text x="188" y="798" fontSize="9" fontWeight="800">{claimant.slice(0, 42)}</text>
-            <text x="188" y="811" fontSize="8">CPF/CNPJ: {data.cpf || "NÃO INFORMADO"}</text>
-            <text x="468" y="758" fontSize="9">Terreno: {formatMeasurement(data.landArea)} m²</text>
-            <text x="468" y="775" fontSize="7">Quadra: {data.block || "-"}</text>
-            <text x="468" y="787" fontSize="7">Lote: {data.lot || "-"}</text>
-            <text x="468" y="804" fontSize="7">{data.technicalResponsible.fullName.slice(0, 23)}</text>
-            <text x="468" y="814" fontSize="6">RESPONSÁVEL TÉCNICO</text>
+            <rect x="18" y="712" width="559" height="112" fill="white" stroke="#111" />
+            <line x1="180" y1="712" x2="180" y2="824" stroke="#111" />
+            <line x1="460" y1="712" x2="460" y2="824" stroke="#111" />
+            <line x1="180" y1="764" x2="460" y2="764" stroke="#111" />
+            <text x="99" y="753" textAnchor="middle" fontSize="24" fontWeight="900" fill="#0874bd">COELHO NETO</text>
+            <text x="99" y="777" textAnchor="middle" fontSize="18" fontWeight="900" fill="#0874bd">SEMOBI</text>
+            <text x="99" y="794" textAnchor="middle" fontSize="6" fontWeight="700">SECRETARIA MUNICIPAL DE OBRAS E INFRAESTRUTURA</text>
+            <text x="188" y="727" fontSize="9" fontWeight="700">CROQUI DE TERRENO URBANO</text>
+            {descriptionLines.map((line, index) => (
+              <text key={line} x="188" y={740 + index * 10} fontSize="6.5">
+                {line}
+              </text>
+            ))}
+            <text x="188" y="779" fontSize="7">POSSEIRO(A):</text>
+            <text x="188" y="794" fontSize="9" fontWeight="800">{claimant.slice(0, 42)}</text>
+            <text x="188" y="810" fontSize="8">CPF/CNPJ: {data.cpf || "NÃO INFORMADO"}</text>
+            <text x="468" y="731" fontSize="8.5">Terreno: {formatMeasurement(data.landArea)} m²</text>
+            <text x="468" y="749" fontSize="7">Quadra: {data.block || "-"}</text>
+            <text x="468" y="762" fontSize="7">Lote: {data.lot || "-"}</text>
+            <text x="468" y="791" fontSize="7">{data.technicalResponsible.fullName.slice(0, 23)}</text>
+            <text x="468" y="804" fontSize="6">RESPONSÁVEL TÉCNICO</text>
           </svg>
         </section>
       </div>

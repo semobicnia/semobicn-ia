@@ -58,12 +58,14 @@ export function buildSketchGeometry(
   const averageDepth = Math.max((measurements.left + measurements.right) / 2, 1);
   const maxWidth = Math.max(measurements.front, measurements.back, 1);
   const width = 300;
-  const height = Math.min(420, Math.max(235, (averageDepth / maxWidth) * 175));
+  // Reserva a faixa superior para o mapa, a rosa dos ventos e o título.
+  // Terrenos muito compridos continuam proporcionais sem invadir o cabeçalho.
+  const height = Math.min(270, Math.max(205, (averageDepth / maxWidth) * 100));
   const frontWidth = (measurements.front / maxWidth) * width;
   const backWidth = (measurements.back / maxWidth) * width;
   const inclination = Math.max(-50, Math.min(50, settings.inclination));
   const centerX = 300;
-  const bottomY = 590;
+  const bottomY = 575;
   const topY = bottomY - height;
 
   return {
@@ -85,4 +87,3 @@ export function formatMeasurement(value: number | null | undefined) {
     maximumFractionDigits: 2,
   });
 }
-
