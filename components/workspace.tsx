@@ -6,17 +6,23 @@ import {
   Check,
   CheckCircle2,
   Download,
+  ExternalLink,
   FileCheck2,
   FileText,
   LoaderCircle,
   MapPinned,
   RotateCcw,
+  Save,
   ShieldCheck,
   Sparkles,
   UploadCloud,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppHeader } from "@/components/app-header";
+import type {
+  ProcessEvent,
+  ProcessStatus,
+} from "@/lib/database";
 import {
   boundaryLabels,
   defaultSexOptions,
@@ -119,15 +125,47 @@ type CurrentUser = {
   role: "admin" | "operator" | "reviewer";
 };
 
-export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
-  const [step, setStep] = useState<Step>("upload");
+type InitialProcess = {
+  id: string;
+  status: ProcessStatus;
+  data: TopographicData;
+  sourceAvailable: boolean;
+  events: ProcessEvent[];
+};
+
+const statusLabels: Record<ProcessStatus, string> = {
+  review: "Em revisão",
+  approved: "Aprovado",
+  completed: "PDF gerado",
+  cancelled: "Cancelado",
+  archived: "Arquivado",
+};
+
+export function Workspace({
+  currentUser,
+  initialProcess,
+}: {
+  currentUser: CurrentUser;
+  initialProcess?: InitialProcess;
+}) {
+  const [step, setStep] = useState<Step>(
+    initialProcess ? "review" : "upload",
+  );
   const [file, setFile] = useState<File | null>(null);
   const [supplementaryMessage, setSupplementaryMessage] = useState("");
-  const [data, setData] = useState<TopographicData>(sampleTopographicData);
+  const [data, setData] = useState<TopographicData>(
+    initialProcess?.data ?? sampleTopographicData,
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [generatedName, setGeneratedName] = useState("");
-  const [processId, setProcessId] = useState<string | null>(null);
+  const [processId, setProcessId] = useState<string | null>(
+    initialProcess?.id ?? null,
+  );
+  const [processStatus, setProcessStatus] = useState<ProcessStatus>(
+    initialProcess?.status ?? "review",
+  );
+  const [savedMessage, setSavedMessage] = useState("");
   const [sexOptions, setSexOptions] =
     useState<SexOption[]>(defaultSexOptions);
   const [staff, setStaff] = useState<StaffMember[]>([
@@ -213,6 +251,7 @@ export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
       }
       setData(result.data);
       setProcessId(result.processId || null);
+      setProcessStatus("review");
       setStep("review");
     } catch (reason) {
       setError(
@@ -228,14 +267,49 @@ export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
   function useExample() {
     setData(sampleTopographicData);
     setProcessId(null);
+    setProcessStatus("review");
     setError("");
     setStep("review");
+  }
+
+  async function persistProcess(nextStatus: ProcessStatus) {
+    if (!processId) return;
+    const response = await fetch(`/api/processes/${processId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data, status: nextStatus }),
+    });
+    const result = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      throw new Error(result.error || "Não foi possível salvar o processo.");
+    }
+    setProcessStatus(nextStatus);
+  }
+
+  async function saveChanges() {
+    setLoading(true);
+    setError("");
+    setSavedMessage("");
+    try {
+      await persistProcess(processStatus);
+      setSavedMessage("Alterações salvas no histórico do processo.");
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Não foi possível salvar o processo.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function generatePdf() {
     setLoading(true);
     setError("");
+    setSavedMessage("");
     try {
+      if (processId) await persistProcess("completed");
       const response = await fetch("/api/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -270,12 +344,17 @@ export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
   }
 
   function restart() {
+    if (initialProcess) {
+      window.location.href = "/";
+      return;
+    }
     setStep("upload");
     setFile(null);
     setSupplementaryMessage("");
     setError("");
     setGeneratedName("");
     setProcessId(null);
+    setProcessStatus("review");
   }
 
   return (
@@ -288,10 +367,15 @@ export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
             <p className="eyebrow">
               <Sparkles size={15} /> Assistente topográfico
             </p>
-            <h1>Do croqui ao documento, com revisão humana.</h1>
+            <h1>
+              {initialProcess
+                ? "Revise e atualize o processo."
+                : "Do croqui ao documento, com revisão humana."}
+            </h1>
             <p>
-              Envie o desenho do imóvel, confira cada informação extraída e
-              gere o PDF no padrão oficial da SEMOBI.
+              {initialProcess
+                ? "Confira os dados salvos, altere a situação e gere novamente o PDF quando necessário."
+                : "Envie o desenho do imóvel, confira cada informação extraída e gere o PDF no padrão oficial da SEMOBI."}
             </p>
           </div>
           <div className="intro-badge">
@@ -302,6 +386,57 @@ export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
             </span>
           </div>
         </section>
+
+        {initialProcess && (
+          <section className="process-toolbar">
+            <div>
+              <span>Situação do processo</span>
+              <select
+                value={processStatus}
+                onChange={(event) =>
+                  setProcessStatus(event.target.value as ProcessStatus)
+                }
+              >
+                {(currentUser.role === "operator"
+                  ? (["review", "completed"] as ProcessStatus[])
+                  : ([
+                      "review",
+                      "approved",
+                      "completed",
+                      "cancelled",
+                      "archived",
+                    ] as ProcessStatus[])
+                ).map((status) => (
+                  <option key={status} value={status}>
+                    {statusLabels[status]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="process-toolbar-actions">
+              {initialProcess.sourceAvailable && (
+                <a
+                  className="button secondary"
+                  href={`/api/processes/${initialProcess.id}/source`}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <ExternalLink size={16} />
+                  Abrir croqui original
+                </a>
+              )}
+              <button
+                className="button primary"
+                disabled={loading}
+                onClick={saveChanges}
+                type="button"
+              >
+                <Save size={16} />
+                Salvar alterações
+              </button>
+            </div>
+          </section>
+        )}
 
         <nav className="stepper" aria-label="Etapas do processo">
           {steps.map((item, index) => {
@@ -383,6 +518,9 @@ export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
                 </label>
 
                 {error && <p className="error-message">{error}</p>}
+                {savedMessage && (
+                  <p className="success-message">{savedMessage}</p>
+                )}
 
                 <div className="panel-actions">
                   <button className="button secondary" onClick={useExample}>
@@ -750,10 +888,14 @@ export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
                 <div className="panel-actions sticky-actions">
                   <button
                     className="button secondary"
-                    onClick={() => setStep("upload")}
+                    onClick={() =>
+                      initialProcess
+                        ? (window.location.href = "/historico")
+                        : setStep("upload")
+                    }
                   >
                     <ArrowLeft size={17} />
-                    Voltar
+                    {initialProcess ? "Voltar ao histórico" : "Voltar"}
                   </button>
                   <button
                     className="button primary"
@@ -819,7 +961,10 @@ export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
                       : data.claimantName || "Sem identificação"}
                   </strong>
                   <small>
-                    {file?.name || "Croqui ainda não selecionado"}
+                    {file?.name ||
+                      (initialProcess
+                        ? "Processo cadastrado"
+                        : "Croqui ainda não selecionado")}
                   </small>
                 </span>
               </div>
@@ -833,6 +978,24 @@ export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
                 />
               </div>
             </div>
+
+            {initialProcess && (
+              <div className="side-card audit-card">
+                <p className="eyebrow">Registro de alterações</p>
+                {initialProcess.events.length === 0 ? (
+                  <small>Nenhuma ação registrada.</small>
+                ) : (
+                  <ul>
+                    {initialProcess.events.slice(0, 8).map((event) => (
+                      <li key={event.id}>
+                        <strong>{event.description}</strong>
+                        <span>{event.userName}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
 
             <div className="side-card rules-card">
               <p className="eyebrow">Regras automáticas</p>

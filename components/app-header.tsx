@@ -1,6 +1,12 @@
 "use client";
 
-import { FileClock, FilePlus2, LogOut, UsersRound } from "lucide-react";
+import {
+  FileClock,
+  FilePlus2,
+  LayoutDashboard,
+  LogOut,
+  UsersRound,
+} from "lucide-react";
 import { signOut } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -23,6 +29,12 @@ export function AppHeader({ currentUser }: { currentUser: HeaderUser }) {
   const links = [
     { href: "/", label: "Nova análise", icon: FilePlus2, visible: true },
     { href: "/historico", label: "Histórico", icon: FileClock, visible: true },
+    {
+      href: "/painel",
+      label: "Painel",
+      icon: LayoutDashboard,
+      visible: currentUser.role === "admin",
+    },
     {
       href: "/administracao/usuarios",
       label: "Usuários",

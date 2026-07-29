@@ -18,6 +18,13 @@ type ProcessInput = {
   supplementaryMessage?: string;
 };
 
+export type ProcessStatus =
+  | "review"
+  | "approved"
+  | "completed"
+  | "cancelled"
+  | "archived";
+
 export type ReferenceData = {
   sexOptions: SexOption[];
   staff: StaffMember[];
@@ -25,7 +32,7 @@ export type ReferenceData = {
 
 export type ProcessSummary = {
   id: string;
-  status: "review" | "completed";
+  status: ProcessStatus;
   claimantName: string;
   propertyAddress: string;
   blockNumber: string | null;
@@ -34,6 +41,38 @@ export type ProcessSummary = {
   createdByEmail: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ProcessEvent = {
+  id: string;
+  action:
+    | "created"
+    | "updated"
+    | "status_changed"
+    | "pdf_generated"
+    | "source_viewed";
+  description: string;
+  userName: string;
+  userEmail: string;
+  createdAt: string;
+};
+
+export type ProcessDetail = ProcessSummary & {
+  data: TopographicData;
+  supplementaryMessage: string;
+  sourceAvailable: boolean;
+  events: ProcessEvent[];
+};
+
+export type DashboardStats = {
+  total: number;
+  review: number;
+  approved: number;
+  completed: number;
+  cancelled: number;
+  last30Days: number;
+  byUser: Array<{ name: string; email: string; total: number }>;
+  recentEvents: Array<ProcessEvent & { processId: string; claimantName: string }>;
 };
 
 function fallbackReferenceData(): ReferenceData {
@@ -156,6 +195,21 @@ export async function saveProcess(input: ProcessInput): Promise<string | null> {
       )
       returning id
     `;
+    if (row?.id) {
+      await sql`
+        insert into process_events (
+          process_id,
+          user_id,
+          action,
+          description
+        ) values (
+          ${row.id}::uuid,
+          ${input.createdByUserId}::uuid,
+          'created',
+          'Processo criado a partir da análise do croqui.'
+        )
+      `;
+    }
     return row?.id ?? null;
   } finally {
     await sql.end();
@@ -182,6 +236,33 @@ export async function markProcessCompleted(
           )
         )
     `;
+    await sql`
+      insert into process_events (
+        process_id,
+        user_id,
+        action,
+        description
+      )
+      select
+        ${processId}::uuid,
+        ${userId}::uuid,
+        'pdf_generated',
+        'Documento PDF gerado.'
+      where exists (
+        select 1
+        from topographic_processes process
+        where process.id = ${processId}::uuid
+          and (
+            process.created_by_user_id = ${userId}::uuid
+            or exists (
+              select 1 from app_users
+              where id = ${userId}::uuid
+                and role in ('admin', 'reviewer')
+                and active
+            )
+          )
+      )
+    `;
   } finally {
     await sql.end();
   }
@@ -202,7 +283,7 @@ export async function listProcesses(input: {
     const rows = await sql<
       {
         id: string;
-        status: "review" | "completed";
+        status: ProcessStatus;
         claimant_name: string;
         property_address: string;
         block_number: string | null;
@@ -253,6 +334,334 @@ export async function listProcesses(input: {
       createdAt: iso(row.created_at),
       updatedAt: iso(row.updated_at),
     }));
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function getProcessDetail(input: {
+  processId: string;
+  userId: string;
+  role: "admin" | "operator" | "reviewer";
+}): Promise<ProcessDetail | null> {
+  const sql = createDatabaseClient();
+  if (!sql) return null;
+
+  try {
+    const [row] = await sql<
+      {
+        id: string;
+        status: ProcessStatus;
+        claimant_name: string;
+        property_address: string;
+        block_number: string | null;
+        lot_number: string | null;
+        created_by_name: string | null;
+        created_by_email: string | null;
+        supplementary_message: string | null;
+        source_public_id: string | null;
+        extracted_data: TopographicData;
+        created_at: Date | string;
+        updated_at: Date | string;
+      }[]
+    >`
+      select
+        process.id,
+        process.status,
+        process.claimant_name,
+        process.property_address,
+        process.block_number,
+        process.lot_number,
+        creator.full_name as created_by_name,
+        creator.email as created_by_email,
+        process.supplementary_message,
+        process.source_public_id,
+        process.extracted_data,
+        process.created_at,
+        process.updated_at
+      from topographic_processes process
+      left join app_users creator on creator.id = process.created_by_user_id
+      where process.id = ${input.processId}::uuid
+        and (
+          ${input.role} <> 'operator'
+          or process.created_by_user_id = ${input.userId}::uuid
+        )
+      limit 1
+    `;
+    if (!row) return null;
+
+    const eventRows = await sql<
+      {
+        id: string;
+        action: ProcessEvent["action"];
+        description: string;
+        user_name: string | null;
+        user_email: string | null;
+        created_at: Date | string;
+      }[]
+    >`
+      select
+        event.id,
+        event.action,
+        event.description,
+        actor.full_name as user_name,
+        actor.email as user_email,
+        event.created_at
+      from process_events event
+      left join app_users actor on actor.id = event.user_id
+      where event.process_id = ${input.processId}::uuid
+      order by event.created_at desc
+    `;
+    const iso = (value: Date | string) =>
+      value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+    return {
+      id: row.id,
+      status: row.status,
+      claimantName: row.claimant_name,
+      propertyAddress: row.property_address,
+      blockNumber: row.block_number,
+      lotNumber: row.lot_number,
+      createdByName: row.created_by_name || "Usuário não identificado",
+      createdByEmail: row.created_by_email || "",
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+      data: row.extracted_data,
+      supplementaryMessage: row.supplementary_message || "",
+      sourceAvailable: Boolean(row.source_public_id),
+      events: eventRows.map((event) => ({
+        id: event.id,
+        action: event.action,
+        description: event.description,
+        userName: event.user_name || "Sistema",
+        userEmail: event.user_email || "",
+        createdAt: iso(event.created_at),
+      })),
+    };
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function updateProcess(input: {
+  processId: string;
+  userId: string;
+  role: "admin" | "operator" | "reviewer";
+  data: TopographicData;
+  status: ProcessStatus;
+}): Promise<boolean> {
+  const sql = createDatabaseClient();
+  if (!sql) return false;
+
+  try {
+    const [current] = await sql<{ status: ProcessStatus }[]>`
+      select status
+      from topographic_processes
+      where id = ${input.processId}::uuid
+        and (
+          ${input.role} <> 'operator'
+          or created_by_user_id = ${input.userId}::uuid
+        )
+      limit 1
+    `;
+    if (!current) return false;
+
+    const [updated] = await sql<{ id: string }[]>`
+      update topographic_processes
+      set
+        status = ${input.status},
+        claimant_name = ${input.data.claimantName},
+        claimant_sex_code = ${input.data.claimantSex},
+        property_address = ${input.data.propertyAddress},
+        block_number = ${input.data.block || null},
+        lot_number = ${input.data.lot || null},
+        extracted_data = ${sql.json(input.data)},
+        updated_at = now()
+      where id = ${input.processId}::uuid
+      returning id
+    `;
+    if (!updated) return false;
+
+    await sql`
+      insert into process_events (
+        process_id,
+        user_id,
+        action,
+        description,
+        metadata
+      ) values (
+        ${input.processId}::uuid,
+        ${input.userId}::uuid,
+        'updated',
+        'Dados topográficos revisados e salvos.',
+        ${sql.json({ status: input.status })}
+      )
+    `;
+    if (current.status !== input.status) {
+      await sql`
+        insert into process_events (
+          process_id,
+          user_id,
+          action,
+          description,
+          metadata
+        ) values (
+          ${input.processId}::uuid,
+          ${input.userId}::uuid,
+          'status_changed',
+          ${`Situação alterada de ${current.status} para ${input.status}.`},
+          ${sql.json({ from: current.status, to: input.status })}
+        )
+      `;
+    }
+    return true;
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function getProcessSource(input: {
+  processId: string;
+  userId: string;
+  role: "admin" | "operator" | "reviewer";
+}): Promise<{ publicId: string; claimantName: string } | null> {
+  const sql = createDatabaseClient();
+  if (!sql) return null;
+
+  try {
+    const [row] = await sql<
+      { source_public_id: string | null; claimant_name: string }[]
+    >`
+      select source_public_id, claimant_name
+      from topographic_processes
+      where id = ${input.processId}::uuid
+        and (
+          ${input.role} <> 'operator'
+          or created_by_user_id = ${input.userId}::uuid
+        )
+      limit 1
+    `;
+    if (!row?.source_public_id) return null;
+    await sql`
+      insert into process_events (
+        process_id,
+        user_id,
+        action,
+        description
+      ) values (
+        ${input.processId}::uuid,
+        ${input.userId}::uuid,
+        'source_viewed',
+        'Croqui original consultado.'
+      )
+    `;
+    return {
+      publicId: row.source_public_id,
+      claimantName: row.claimant_name,
+    };
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function getDashboardStats(): Promise<DashboardStats> {
+  const sql = createDatabaseClient();
+  if (!sql) {
+    return {
+      total: 0,
+      review: 0,
+      approved: 0,
+      completed: 0,
+      cancelled: 0,
+      last30Days: 0,
+      byUser: [],
+      recentEvents: [],
+    };
+  }
+
+  try {
+    const [counts, byUserRows, eventRows] = await Promise.all([
+      sql<
+        {
+          total: number;
+          review: number;
+          approved: number;
+          completed: number;
+          cancelled: number;
+          last_30_days: number;
+        }[]
+      >`
+        select
+          count(*)::int as total,
+          count(*) filter (where status = 'review')::int as review,
+          count(*) filter (where status = 'approved')::int as approved,
+          count(*) filter (where status = 'completed')::int as completed,
+          count(*) filter (where status = 'cancelled')::int as cancelled,
+          count(*) filter (
+            where created_at >= now() - interval '30 days'
+          )::int as last_30_days
+        from topographic_processes
+      `,
+      sql<{ name: string; email: string; total: number }[]>`
+        select
+          coalesce(users.full_name, 'Usuário não identificado') as name,
+          coalesce(users.email, '') as email,
+          count(process.id)::int as total
+        from topographic_processes process
+        left join app_users users on users.id = process.created_by_user_id
+        group by users.id, users.full_name, users.email
+        order by total desc, name
+        limit 10
+      `,
+      sql<
+        {
+          id: string;
+          process_id: string;
+          claimant_name: string;
+          action: ProcessEvent["action"];
+          description: string;
+          user_name: string | null;
+          user_email: string | null;
+          created_at: Date | string;
+        }[]
+      >`
+        select
+          event.id,
+          event.process_id,
+          process.claimant_name,
+          event.action,
+          event.description,
+          actor.full_name as user_name,
+          actor.email as user_email,
+          event.created_at
+        from process_events event
+        join topographic_processes process on process.id = event.process_id
+        left join app_users actor on actor.id = event.user_id
+        order by event.created_at desc
+        limit 12
+      `,
+    ]);
+    const count = counts[0];
+    const iso = (value: Date | string) =>
+      value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+    return {
+      total: count?.total || 0,
+      review: count?.review || 0,
+      approved: count?.approved || 0,
+      completed: count?.completed || 0,
+      cancelled: count?.cancelled || 0,
+      last30Days: count?.last_30_days || 0,
+      byUser: byUserRows,
+      recentEvents: eventRows.map((event) => ({
+        id: event.id,
+        processId: event.process_id,
+        claimantName: event.claimant_name,
+        action: event.action,
+        description: event.description,
+        userName: event.user_name || "Sistema",
+        userEmail: event.user_email || "",
+        createdAt: iso(event.created_at),
+      })),
+    };
   } finally {
     await sql.end();
   }

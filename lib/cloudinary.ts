@@ -46,3 +46,22 @@ export async function storePrivatePdf(
   };
   return { url: result.secure_url, publicId: result.public_id };
 }
+
+function encodePublicId(publicId: string) {
+  return publicId
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
+export function getSignedPrivatePdfUrl(publicId: string): string | null {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+  if (!cloudName || !apiSecret || !publicId) return null;
+
+  const signature = createHash("sha1")
+    .update(`${publicId}${apiSecret}`)
+    .digest("base64url")
+    .slice(0, 8);
+  return `https://res.cloudinary.com/${encodeURIComponent(cloudName)}/raw/authenticated/s--${signature}--/${encodePublicId(publicId)}`;
+}

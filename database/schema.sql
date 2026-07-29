@@ -116,7 +116,7 @@ alter table topographic_processes
 
 alter table topographic_processes
   add constraint topographic_processes_status_check
-    check (status in ('review', 'completed'));
+    check (status in ('review', 'approved', 'completed', 'cancelled', 'archived'));
 
 alter table topographic_processes
   add column if not exists claimant_sex_code text not null
@@ -156,3 +156,39 @@ create index if not exists topographic_processes_claimant_sex_idx
 
 create index if not exists topographic_processes_created_by_idx
   on topographic_processes (created_by_user_id);
+
+create index if not exists topographic_processes_status_idx
+  on topographic_processes (status, created_at desc);
+
+create table if not exists process_events (
+  id uuid primary key default gen_random_uuid(),
+  process_id uuid not null references topographic_processes (id) on delete cascade,
+  user_id uuid references app_users (id),
+  action text not null,
+  description text not null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  constraint process_events_action_check
+    check (action in (
+      'created',
+      'updated',
+      'status_changed',
+      'pdf_generated',
+      'source_viewed'
+    ))
+);
+
+create index if not exists process_events_process_idx
+  on process_events (process_id, created_at desc);
+
+insert into process_events (process_id, user_id, action, description)
+select
+  process.id,
+  process.created_by_user_id,
+  'created',
+  'Processo criado a partir da análise do croqui.'
+from topographic_processes process
+where not exists (
+  select 1 from process_events event
+  where event.process_id = process.id and event.action = 'created'
+);

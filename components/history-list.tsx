@@ -1,8 +1,26 @@
 "use client";
 
-import { CheckCircle2, Clock3, FileClock, Search } from "lucide-react";
+import {
+  Archive,
+  Ban,
+  CheckCircle2,
+  Clock3,
+  ExternalLink,
+  FileClock,
+  Search,
+  ShieldCheck,
+} from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import type { ProcessSummary } from "@/lib/database";
+
+const statusContent = {
+  review: { label: "Em revisão", icon: Clock3 },
+  approved: { label: "Aprovado", icon: ShieldCheck },
+  completed: { label: "PDF gerado", icon: CheckCircle2 },
+  cancelled: { label: "Cancelado", icon: Ban },
+  archived: { label: "Arquivado", icon: Archive },
+};
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("pt-BR", {
@@ -84,41 +102,49 @@ export function HistoryList({
                   <th>Responsável</th>
                   <th>Situação</th>
                   <th>Data</th>
+                  <th>Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {processes.map((process) => (
-                  <tr key={process.id}>
-                    <td>
-                      <strong>{process.claimantName}</strong>
-                      <small>{process.propertyAddress}</small>
-                    </td>
-                    <td>
-                      Q. {process.blockNumber || "—"} / L.{" "}
-                      {process.lotNumber || "—"}
-                    </td>
-                    <td>
-                      {process.createdByName}
-                      {process.createdByEmail && (
-                        <small>{process.createdByEmail}</small>
-                      )}
-                    </td>
-                    <td>
-                      <span
-                        className={`status-badge ${process.status === "completed" ? "completed" : "review"}`}
-                      >
-                        {process.status === "completed" ? (
-                          <CheckCircle2 size={13} />
-                        ) : (
-                          <Clock3 size={13} />
-                        )}
-                        {process.status === "completed"
-                          ? "PDF gerado"
-                          : "Em revisão"}
-                      </span>
-                    </td>
-                    <td>{formatDate(process.createdAt)}</td>
-                  </tr>
+                  (() => {
+                    const status = statusContent[process.status];
+                    const StatusIcon = status.icon;
+                    return (
+                      <tr key={process.id}>
+                        <td>
+                          <strong>{process.claimantName}</strong>
+                          <small>{process.propertyAddress}</small>
+                        </td>
+                        <td>
+                          Q. {process.blockNumber || "—"} / L.{" "}
+                          {process.lotNumber || "—"}
+                        </td>
+                        <td>
+                          {process.createdByName}
+                          {process.createdByEmail && (
+                            <small>{process.createdByEmail}</small>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`status-badge ${process.status}`}>
+                            <StatusIcon size={13} />
+                            {status.label}
+                          </span>
+                        </td>
+                        <td>{formatDate(process.createdAt)}</td>
+                        <td>
+                          <Link
+                            className="table-action"
+                            href={`/processos/${process.id}`}
+                          >
+                            Abrir
+                            <ExternalLink size={13} />
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })()
                 ))}
               </tbody>
             </table>
