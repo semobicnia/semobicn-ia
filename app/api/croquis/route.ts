@@ -6,6 +6,22 @@ import type { UrbanSketchSettings } from "@/lib/croqui";
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 
+function validVertexOffsets(value: unknown) {
+  return (
+    Array.isArray(value) &&
+    value.length === 4 &&
+    value.every(
+      (point) =>
+        point &&
+        typeof point === "object" &&
+        typeof (point as { x?: unknown }).x === "number" &&
+        Number.isFinite((point as { x: number }).x) &&
+        typeof (point as { y?: unknown }).y === "number" &&
+        Number.isFinite((point as { y: number }).y),
+    )
+  );
+}
+
 export async function POST(request: Request) {
   const session = await getAuthenticatedSession();
   if (!session || !session.user.role) {
@@ -25,7 +41,8 @@ export async function POST(request: Request) {
       typeof body.settings.inclination !== "number" ||
       typeof body.settings.scale !== "string" ||
       typeof body.settings.showBuilding !== "boolean" ||
-      typeof body.settings.approximationNotice !== "boolean"
+      typeof body.settings.approximationNotice !== "boolean" ||
+      !validVertexOffsets(body.settings.vertexOffsets)
     ) {
       return NextResponse.json({ error: "Dados do croqui inválidos." }, { status: 400 });
     }

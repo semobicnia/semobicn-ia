@@ -5,12 +5,19 @@ import {
   FileDown,
   ImagePlus,
   LoaderCircle,
+  MoveDiagonal2,
   RotateCcw,
   Save,
 } from "lucide-react";
 import Link from "next/link";
 import { PDFDocument } from "pdf-lib";
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { AppHeader, type HeaderUser } from "./app-header";
 import {
   buildSketchGeometry,
@@ -30,8 +37,14 @@ type Props = {
   initialLocationImageUrl?: string;
 };
 
+function serializeFinalSvg(svg: SVGSVGElement) {
+  const clone = svg.cloneNode(true) as SVGSVGElement;
+  clone.querySelectorAll("[data-editor-only]").forEach((element) => element.remove());
+  return new XMLSerializer().serializeToString(clone);
+}
+
 function svgToDownload(svg: SVGSVGElement, filename: string) {
-  const source = new XMLSerializer().serializeToString(svg);
+  const source = serializeFinalSvg(svg);
   const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -105,10 +118,27 @@ export function CroquiWorkspace({
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [editingVertices, setEditingVertices] = useState(false);
+  const draggingVertex = useRef<number | null>(null);
   const [message, setMessage] = useState("");
   const geometry = useMemo(
     () => buildSketchGeometry(data, settings),
     [data, settings],
+  );
+  const baseGeometry = useMemo(
+    () =>
+      buildSketchGeometry(data, {
+        ...settings,
+        vertexOffsets: defaultUrbanSketchSettings.vertexOffsets,
+      }),
+    [
+      data,
+      settings.approximationNotice,
+      settings.inclination,
+      settings.northAngle,
+      settings.scale,
+      settings.showBuilding,
+    ],
   );
   const measurements = getSketchMeasurements(data);
   const [bottomLeft, bottomRight, topRight, topLeft] = geometry.points;
@@ -195,7 +225,7 @@ export function CroquiWorkspace({
     setMessage("");
     let svgUrl = "";
     try {
-      const source = new XMLSerializer().serializeToString(svg);
+      const source = serializeFinalSvg(svg);
       svgUrl = URL.createObjectURL(
         new Blob([source], { type: "image/svg+xml;charset=utf-8" }),
       );
@@ -253,6 +283,47 @@ export function CroquiWorkspace({
       if (svgUrl) URL.revokeObjectURL(svgUrl);
       setGeneratingPdf(false);
     }
+  }
+
+  function moveVertex(
+    index: number,
+    event: ReactPointerEvent<SVGCircleElement>,
+  ) {
+    if (draggingVertex.current !== index) return;
+    const svg = event.currentTarget.ownerSVGElement;
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !matrix) return;
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const local = point.matrixTransform(matrix.inverse());
+    const limits = [
+      { minX: 90, maxX: 295, minY: 430, maxY: 620 },
+      { minX: 305, maxX: 510, minY: 430, maxY: 620 },
+      { minX: 305, maxX: 510, minY: 295, maxY: 450 },
+      { minX: 90, maxX: 295, minY: 295, maxY: 450 },
+    ];
+    const limit = limits[index];
+    const x = Math.max(limit.minX, Math.min(limit.maxX, local.x));
+    const y = Math.max(limit.minY, Math.min(limit.maxY, local.y));
+    setSettings((current) => {
+      const offsets = current.vertexOffsets.map((offset) => ({ ...offset })) as
+        UrbanSketchSettings["vertexOffsets"];
+      offsets[index] = {
+        x: x - baseGeometry.points[index].x,
+        y: y - baseGeometry.points[index].y,
+      };
+      return { ...current, vertexOffsets: offsets };
+    });
+  }
+
+  function restoreCalculatedShape() {
+    updateSetting(
+      "vertexOffsets",
+      defaultUrbanSketchSettings.vertexOffsets.map((point) => ({ ...point })) as
+        UrbanSketchSettings["vertexOffsets"],
+    );
+    setMessage("Formato calculado restaurado.");
   }
 
   async function saveSketch() {
@@ -373,6 +444,24 @@ export function CroquiWorkspace({
             />
             Exibir aviso de representação aproximada
           </label>
+
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={editingVertices}
+              onChange={(event) => setEditingVertices(event.target.checked)}
+            />
+            Ajustar vértices manualmente
+          </label>
+          {editingVertices && (
+            <div className="vertex-editor-note">
+              <MoveDiagonal2 size={16} />
+              Arraste os quatro pontos azuis sobre a folha.
+              <button type="button" onClick={restoreCalculatedShape}>
+                Restaurar formato calculado
+              </button>
+            </div>
+          )}
 
           <div className="croqui-measurements">
             <strong>Medidas utilizadas</strong>
@@ -496,6 +585,32 @@ export function CroquiWorkspace({
             <text x="112" y="288" fontSize="12">(Vista Parcial do Bairro)</text>
 
             <polygon points={polygon} fill="url(#dotPattern)" stroke="#111" strokeWidth="3" />
+            {editingVertices &&
+              geometry.points.map((point, index) => (
+                <circle
+                  key={`vertex-${index}`}
+                  data-editor-only="true"
+                  cx={point.x}
+                  cy={point.y}
+                  r="7"
+                  fill="#1769e0"
+                  stroke="white"
+                  strokeWidth="2"
+                  style={{ cursor: "move", touchAction: "none" }}
+                  onPointerDown={(event) => {
+                    draggingVertex.current = index;
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                  }}
+                  onPointerMove={(event) => moveVertex(index, event)}
+                  onPointerUp={(event) => {
+                    draggingVertex.current = null;
+                    event.currentTarget.releasePointerCapture(event.pointerId);
+                  }}
+                  onPointerCancel={() => {
+                    draggingVertex.current = null;
+                  }}
+                />
+              ))}
             {settings.showBuilding && data.builtArea && data.builtArea > 0 ? (
               <rect
                 x={(bottomLeft.x + bottomRight.x) / 2 - 54}

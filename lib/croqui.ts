@@ -6,7 +6,20 @@ export type UrbanSketchSettings = {
   inclination: number;
   showBuilding: boolean;
   approximationNotice: boolean;
+  vertexOffsets: [
+    SketchPoint,
+    SketchPoint,
+    SketchPoint,
+    SketchPoint,
+  ];
 };
+
+const emptyVertexOffsets: UrbanSketchSettings["vertexOffsets"] = [
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+];
 
 export const defaultUrbanSketchSettings: UrbanSketchSettings = {
   northAngle: 0,
@@ -14,6 +27,7 @@ export const defaultUrbanSketchSettings: UrbanSketchSettings = {
   inclination: 8,
   showBuilding: true,
   approximationNotice: true,
+  vertexOffsets: emptyVertexOffsets,
 };
 
 export type SketchPoint = {
@@ -67,14 +81,35 @@ export function buildSketchGeometry(
   const centerX = 300;
   const bottomY = 575;
   const topY = bottomY - height;
+  const basePoints: SketchGeometry["points"] = [
+    { x: centerX - frontWidth / 2, y: bottomY },
+    { x: centerX + frontWidth / 2, y: bottomY },
+    { x: centerX + inclination + backWidth / 2, y: topY },
+    { x: centerX + inclination - backWidth / 2, y: topY },
+  ];
+  const offsets =
+    Array.isArray(settings.vertexOffsets) && settings.vertexOffsets.length === 4
+      ? settings.vertexOffsets
+      : emptyVertexOffsets;
+  const limits = [
+    { minX: 90, maxX: 295, minY: 430, maxY: 620 },
+    { minX: 305, maxX: 510, minY: 430, maxY: 620 },
+    { minX: 305, maxX: 510, minY: 295, maxY: 450 },
+    { minX: 90, maxX: 295, minY: 295, maxY: 450 },
+  ];
+  const points = basePoints.map((point, index) => {
+    const offset = offsets[index];
+    const limit = limits[index];
+    const x = point.x + (Number.isFinite(offset?.x) ? offset.x : 0);
+    const y = point.y + (Number.isFinite(offset?.y) ? offset.y : 0);
+    return {
+      x: Math.max(limit.minX, Math.min(limit.maxX, x)),
+      y: Math.max(limit.minY, Math.min(limit.maxY, y)),
+    };
+  }) as SketchGeometry["points"];
 
   return {
-    points: [
-      { x: centerX - frontWidth / 2, y: bottomY },
-      { x: centerX + frontWidth / 2, y: bottomY },
-      { x: centerX + inclination + backWidth / 2, y: topY },
-      { x: centerX + inclination - backWidth / 2, y: topY },
-    ],
+    points,
     width,
     height,
   };

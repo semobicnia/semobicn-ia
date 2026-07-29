@@ -1781,6 +1781,32 @@ button:disabled {
   color: #29465e;
 }
 
+.vertex-editor-note {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 7px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid #bfd5e7;
+  border-radius: 9px;
+  color: #355f7d;
+  background: #eff8ff;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.vertex-editor-note button {
+  grid-column: 1 / -1;
+  padding: 0;
+  border: 0;
+  color: #1769aa;
+  background: transparent;
+  font: inherit;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
 .croqui-actions {
   display: grid;
   gap: 8px;
