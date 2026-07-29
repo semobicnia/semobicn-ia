@@ -367,7 +367,7 @@ export function Workspace() {
                       onChange={(value) => update("claimantName", value)}
                     />
                     <Field
-                      label="CPF"
+                      label="CPF/CNPJ"
                       value={data.cpf}
                       onChange={(value) => update("cpf", value)}
                     />

@@ -328,7 +328,7 @@ export async function createTopographicPdf(data: TopographicData) {
       },
       { text: `${data.nationality}, ${holder} do` },
       {
-        text: `CPF. nº ${data.cpf || "não informado"},`,
+        text: `CPF/CNPJ nº ${data.cpf || "não informado"},`,
         font: "bold",
       },
       {

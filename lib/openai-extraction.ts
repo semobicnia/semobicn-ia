@@ -99,6 +99,7 @@ export async function extractTopographicData(
 
 Regras obrigatórias:
 - Não invente dados ilegíveis; use string vazia ou null e registre a dúvida em reviewNotes.
+- Extraia no campo cpf o CPF ou o CNPJ informado no croqui.
 - A nacionalidade padrão é "brasileira", exceto quando a mensagem complementar disser outra.
 - A residência é o mesmo endereço do imóvel, exceto quando a mensagem complementar informar outro endereço.
 - Em qualquer limite sem nome de vizinho ou rua, use exatamente "TERRENOS DE TERCEIROS".
