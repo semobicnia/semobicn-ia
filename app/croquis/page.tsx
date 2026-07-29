@@ -37,6 +37,20 @@ export default async function UrbanSketchesPage() {
         </section>
 
         <section className="sketch-process-grid">
+          <article className="sketch-process-card sketch-demo-card">
+            <span><MapPinned size={20} /></span>
+            <div>
+              <strong>Modelo de referência</strong>
+              <small>Croqui de Maria Resende usado como padrão visual</small>
+              <small>Demonstração sem alteração no banco</small>
+            </div>
+            <Link
+              className="button secondary compact"
+              href="/croquis/novo?demonstracao=1"
+            >
+              Visualizar modelo
+            </Link>
+          </article>
           {processes.length === 0 ? (
             <div className="empty-state sketch-empty">
               <MapPinned size={36} />

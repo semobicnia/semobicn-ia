@@ -22,7 +22,7 @@ import type { TopographicData } from "@/lib/topographic";
 
 type Props = {
   currentUser: HeaderUser;
-  processId: string;
+  processId?: string;
   data: TopographicData;
   initialSettings?: UrbanSketchSettings | null;
 };
@@ -86,6 +86,10 @@ export function CroquiWorkspace({
   }
 
   async function saveSketch() {
+    if (!processId) {
+      setMessage("O modelo de demonstração não altera nenhum processo.");
+      return;
+    }
     setSaving(true);
     setMessage("");
     try {
@@ -247,8 +251,13 @@ export function CroquiWorkspace({
             </button>
           </div>
           {message && <p className="croqui-message">{message}</p>}
-          <Link className="back-process-link" href={`/processos/${processId}`}>
-            Voltar às informações topográficas
+          <Link
+            className="back-process-link"
+            href={processId ? `/processos/${processId}` : "/croquis"}
+          >
+            {processId
+              ? "Voltar às informações topográficas"
+              : "Voltar à lista de croquis"}
           </Link>
         </aside>
 
@@ -392,4 +401,3 @@ export function CroquiWorkspace({
     </main>
   );
 }
-
