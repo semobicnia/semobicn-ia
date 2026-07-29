@@ -112,6 +112,13 @@ create table if not exists topographic_processes (
 );
 
 alter table topographic_processes
+  drop constraint if exists topographic_processes_status_check;
+
+alter table topographic_processes
+  add constraint topographic_processes_status_check
+    check (status in ('review', 'completed'));
+
+alter table topographic_processes
   add column if not exists claimant_sex_code text not null
     default 'not_informed' references sex_options (code),
   add column if not exists technical_responsible_id uuid

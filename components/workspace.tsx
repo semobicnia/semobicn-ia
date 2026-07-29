@@ -9,15 +9,14 @@ import {
   FileCheck2,
   FileText,
   LoaderCircle,
-  LogOut,
   MapPinned,
   RotateCcw,
   ShieldCheck,
   Sparkles,
   UploadCloud,
 } from "lucide-react";
-import { signOut } from "next-auth/react";
 import { useEffect, useMemo, useState } from "react";
+import { AppHeader } from "@/components/app-header";
 import {
   boundaryLabels,
   defaultSexOptions,
@@ -120,12 +119,6 @@ type CurrentUser = {
   role: "admin" | "operator" | "reviewer";
 };
 
-const roleLabels: Record<CurrentUser["role"], string> = {
-  admin: "Administrador",
-  operator: "Operador",
-  reviewer: "Revisor",
-};
-
 export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
   const [step, setStep] = useState<Step>("upload");
   const [file, setFile] = useState<File | null>(null);
@@ -134,6 +127,7 @@ export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [generatedName, setGeneratedName] = useState("");
+  const [processId, setProcessId] = useState<string | null>(null);
   const [sexOptions, setSexOptions] =
     useState<SexOption[]>(defaultSexOptions);
   const [staff, setStaff] = useState<StaffMember[]>([
@@ -211,12 +205,14 @@ export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
       const response = await fetch("/api/analyze", { method: "POST", body });
       const result = (await response.json()) as {
         data?: TopographicData;
+        processId?: string | null;
         error?: string;
       };
       if (!response.ok || !result.data) {
         throw new Error(result.error || "Não foi possível analisar o croqui.");
       }
       setData(result.data);
+      setProcessId(result.processId || null);
       setStep("review");
     } catch (reason) {
       setError(
@@ -231,6 +227,7 @@ export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
 
   function useExample() {
     setData(sampleTopographicData);
+    setProcessId(null);
     setError("");
     setStep("review");
   }
@@ -242,7 +239,7 @@ export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
       const response = await fetch("/api/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ data, processId }),
       });
       if (!response.ok) {
         const result = (await response.json()) as { error?: string };
@@ -278,39 +275,12 @@ export function Workspace({ currentUser }: { currentUser: CurrentUser }) {
     setSupplementaryMessage("");
     setError("");
     setGeneratedName("");
+    setProcessId(null);
   }
 
   return (
     <main className="min-h-screen">
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-mark">S</div>
-          <div>
-            <strong>SEMOBICN IA</strong>
-            <span>Prefeitura de Coelho Neto</span>
-          </div>
-        </div>
-        <div className="topbar-actions">
-          <div className="current-user">
-            <span className="user-avatar">
-              {currentUser.name.trim().charAt(0).toUpperCase() || "S"}
-            </span>
-            <span>
-              <strong>{currentUser.name}</strong>
-              <small>{roleLabels[currentUser.role]}</small>
-            </span>
-          </div>
-          <button
-            className="signout-button"
-            type="button"
-            onClick={() => signOut({ callbackUrl: "/entrar" })}
-            title="Sair do sistema"
-          >
-            <LogOut size={17} />
-            Sair
-          </button>
-        </div>
-      </header>
+      <AppHeader currentUser={currentUser} />
 
       <div className="page-shell">
         <section className="intro">

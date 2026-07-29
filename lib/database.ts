@@ -23,6 +23,19 @@ export type ReferenceData = {
   staff: StaffMember[];
 };
 
+export type ProcessSummary = {
+  id: string;
+  status: "review" | "completed";
+  claimantName: string;
+  propertyAddress: string;
+  blockNumber: string | null;
+  lotNumber: string | null;
+  createdByName: string;
+  createdByEmail: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 function fallbackReferenceData(): ReferenceData {
   return {
     sexOptions: defaultSexOptions.map((option) => ({ ...option })),
@@ -144,6 +157,102 @@ export async function saveProcess(input: ProcessInput): Promise<string | null> {
       returning id
     `;
     return row?.id ?? null;
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function markProcessCompleted(
+  processId: string,
+  userId: string,
+): Promise<void> {
+  const sql = createDatabaseClient();
+  if (!sql) return;
+
+  try {
+    await sql`
+      update topographic_processes
+      set status = 'completed', updated_at = now()
+      where id = ${processId}::uuid
+        and (
+          created_by_user_id = ${userId}::uuid
+          or exists (
+            select 1 from app_users
+            where id = ${userId}::uuid and role in ('admin', 'reviewer') and active
+          )
+        )
+    `;
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function listProcesses(input: {
+  userId: string;
+  role: "admin" | "operator" | "reviewer";
+  search?: string;
+  limit?: number;
+}): Promise<ProcessSummary[]> {
+  const sql = createDatabaseClient();
+  if (!sql) return [];
+  const search = input.search?.trim() || "";
+  const limit = Math.min(Math.max(input.limit || 50, 1), 100);
+
+  try {
+    const rows = await sql<
+      {
+        id: string;
+        status: "review" | "completed";
+        claimant_name: string;
+        property_address: string;
+        block_number: string | null;
+        lot_number: string | null;
+        created_by_name: string | null;
+        created_by_email: string | null;
+        created_at: Date | string;
+        updated_at: Date | string;
+      }[]
+    >`
+      select
+        process.id,
+        process.status,
+        process.claimant_name,
+        process.property_address,
+        process.block_number,
+        process.lot_number,
+        creator.full_name as created_by_name,
+        creator.email as created_by_email,
+        process.created_at,
+        process.updated_at
+      from topographic_processes process
+      left join app_users creator on creator.id = process.created_by_user_id
+      where
+        (${input.role} <> 'operator' or process.created_by_user_id = ${input.userId}::uuid)
+        and (
+          ${search} = ''
+          or process.claimant_name ilike ${`%${search}%`}
+          or process.property_address ilike ${`%${search}%`}
+          or coalesce(process.block_number, '') ilike ${`%${search}%`}
+          or coalesce(process.lot_number, '') ilike ${`%${search}%`}
+        )
+      order by process.created_at desc
+      limit ${limit}
+    `;
+
+    const iso = (value: Date | string) =>
+      value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+    return rows.map((row) => ({
+      id: row.id,
+      status: row.status,
+      claimantName: row.claimant_name,
+      propertyAddress: row.property_address,
+      blockNumber: row.block_number,
+      lotNumber: row.lot_number,
+      createdByName: row.created_by_name || "Usuário não identificado",
+      createdByEmail: row.created_by_email || "",
+      createdAt: iso(row.created_at),
+      updatedAt: iso(row.updated_at),
+    }));
   } finally {
     await sql.end();
   }

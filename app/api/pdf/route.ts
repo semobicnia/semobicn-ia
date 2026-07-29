@@ -5,6 +5,7 @@ import {
   normalizeTopographicData,
 } from "@/lib/topographic";
 import { getAuthenticatedSession } from "@/lib/auth";
+import { markProcessCompleted } from "@/lib/database";
 
 export const runtime = "nodejs";
 
@@ -19,15 +20,29 @@ export async function POST(request: Request) {
     }
 
     const body: unknown = await request.json();
-    if (!isTopographicData(body)) {
+    const payload =
+      body && typeof body === "object" && "data" in body
+        ? (body as { data: unknown; processId?: unknown })
+        : { data: body, processId: undefined };
+    if (!isTopographicData(payload.data)) {
       return NextResponse.json(
         { error: "Os dados do documento estão incompletos." },
         { status: 400 },
       );
     }
 
-    const data = normalizeTopographicData(body);
+    const data = normalizeTopographicData(payload.data);
     const bytes = await createTopographicPdf(data);
+    if (
+      typeof payload.processId === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        payload.processId,
+      )
+    ) {
+      await markProcessCompleted(payload.processId, session.user.id).catch(
+        () => undefined,
+      );
+    }
     const safeName =
       data.claimantName
         .normalize("NFD")
