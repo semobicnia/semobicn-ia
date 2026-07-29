@@ -1638,6 +1638,230 @@ button:disabled {
   background: #f2f6f9;
 }
 
+.sketch-process-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.sketch-process-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  padding: 17px;
+  border: 1px solid #dfe7ed;
+  border-radius: 13px;
+  background: white;
+  box-shadow: 0 9px 26px rgb(26 55 79 / 5%);
+}
+
+.sketch-process-card > span {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.sketch-process-card > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sketch-process-card strong {
+  color: #233e57;
+  font-size: 13px;
+}
+
+.sketch-process-card small {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sketch-empty {
+  grid-column: 1 / -1;
+}
+
+.croqui-page {
+  min-height: 100vh;
+  background: #eef3f6;
+}
+
+.croqui-shell {
+  width: min(1440px, calc(100% - 32px));
+  margin: 22px auto 55px;
+  display: grid;
+  grid-template-columns: 330px minmax(0, 1fr);
+  align-items: start;
+  gap: 22px;
+}
+
+.croqui-controls {
+  position: sticky;
+  top: 18px;
+  display: grid;
+  gap: 17px;
+  padding: 22px;
+  border: 1px solid #dce5eb;
+  border-radius: 15px;
+  background: white;
+  box-shadow: 0 14px 35px rgb(26 55 79 / 8%);
+}
+
+.croqui-controls h1 {
+  margin: 4px 0 7px;
+  color: #203b55;
+  font-size: 22px;
+}
+
+.croqui-controls > div > p:last-child {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.location-upload {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed #9fb4c5;
+  border-radius: 9px;
+  color: #356a8e;
+  background: #f5fafd;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.location-upload input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #3c5368;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.check-row input {
+  width: 16px;
+  height: 16px;
+}
+
+.croqui-measurements {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 7px;
+  padding: 13px;
+  border-radius: 9px;
+  color: #53687b;
+  background: #f5f7f9;
+  font-size: 10px;
+}
+
+.croqui-measurements strong {
+  grid-column: 1 / -1;
+  color: #29465e;
+}
+
+.croqui-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.croqui-actions .button {
+  justify-content: center;
+}
+
+.croqui-message {
+  margin: -5px 0 0;
+  color: var(--success);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.back-process-link {
+  color: #446780;
+  font-size: 10px;
+  text-align: center;
+  text-decoration: underline;
+}
+
+.croqui-preview {
+  display: grid;
+  place-items: start center;
+  padding: 22px;
+  overflow: auto;
+  border-radius: 15px;
+  background: #dfe6ea;
+}
+
+.croqui-preview svg {
+  width: min(100%, 820px);
+  height: auto;
+  background: white;
+  box-shadow: 0 15px 42px rgb(20 39 55 / 20%);
+}
+
+@media (max-width: 980px) {
+  .croqui-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .croqui-controls {
+    position: static;
+  }
+
+  .sketch-process-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  .croqui-page {
+    background: white;
+  }
+
+  .croqui-page .topbar,
+  .croqui-controls {
+    display: none !important;
+  }
+
+  .croqui-shell {
+    width: 100%;
+    margin: 0;
+    display: block;
+  }
+
+  .croqui-preview {
+    padding: 0;
+    background: white;
+  }
+
+  .croqui-preview svg {
+    width: 100%;
+    max-height: 100vh;
+    box-shadow: none;
+  }
+}
+
 .user-actions button.danger {
   color: #a3403a;
 }

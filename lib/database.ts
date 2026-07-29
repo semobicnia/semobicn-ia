@@ -1,5 +1,9 @@
 import postgres from "postgres";
 import {
+  defaultUrbanSketchSettings,
+  type UrbanSketchSettings,
+} from "./croqui";
+import {
   defaultSexOptions,
   defaultTechnicalResponsible,
   defaultWorksInspector,
@@ -50,7 +54,8 @@ export type ProcessEvent = {
     | "updated"
     | "status_changed"
     | "pdf_generated"
-    | "source_viewed";
+    | "source_viewed"
+    | "sketch_saved";
   description: string;
   userName: string;
   userEmail: string;
@@ -73,6 +78,14 @@ export type DashboardStats = {
   last30Days: number;
   byUser: Array<{ name: string; email: string; total: number }>;
   recentEvents: Array<ProcessEvent & { processId: string; claimantName: string }>;
+};
+
+export type UrbanSketchRecord = {
+  id: string;
+  processId: string;
+  settings: UrbanSketchSettings;
+  status: "review" | "finalized";
+  updatedAt: string;
 };
 
 function fallbackReferenceData(): ReferenceData {
@@ -149,6 +162,105 @@ export async function getReferenceData(): Promise<ReferenceData> {
             }))
           : fallbackReferenceData().staff,
     };
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function getUrbanSketch(
+  processId: string,
+): Promise<UrbanSketchRecord | null> {
+  const sql = createDatabaseClient();
+  if (!sql) return null;
+
+  try {
+    const [row] = await sql<
+      {
+        id: string;
+        process_id: string;
+        settings: Partial<UrbanSketchSettings>;
+        status: "review" | "finalized";
+        updated_at: Date | string;
+      }[]
+    >`
+      select id, process_id, settings, status, updated_at
+      from urban_sketches
+      where process_id = ${processId}::uuid
+      limit 1
+    `;
+    if (!row) return null;
+    return {
+      id: row.id,
+      processId: row.process_id,
+      settings: {
+        ...defaultUrbanSketchSettings,
+        ...row.settings,
+      },
+      status: row.status,
+      updatedAt:
+        row.updated_at instanceof Date
+          ? row.updated_at.toISOString()
+          : new Date(row.updated_at).toISOString(),
+    };
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function saveUrbanSketch(input: {
+  processId: string;
+  userId: string;
+  role: "admin" | "operator" | "reviewer";
+  settings: UrbanSketchSettings;
+}): Promise<boolean> {
+  const sql = createDatabaseClient();
+  if (!sql) return false;
+
+  try {
+    const [allowed] = await sql<{ id: string }[]>`
+      select process.id
+      from topographic_processes process
+      where process.id = ${input.processId}::uuid
+        and (
+          ${input.role} <> 'operator'
+          or process.created_by_user_id = ${input.userId}::uuid
+        )
+      limit 1
+    `;
+    if (!allowed) return false;
+
+    await sql`
+      insert into urban_sketches (
+        process_id,
+        created_by_user_id,
+        settings
+      ) values (
+        ${input.processId}::uuid,
+        ${input.userId}::uuid,
+        ${sql.json(input.settings)}
+      )
+      on conflict (process_id) do update
+      set
+        settings = excluded.settings,
+        updated_at = now()
+    `;
+
+    await sql`
+      insert into process_events (
+        process_id,
+        user_id,
+        action,
+        description,
+        metadata
+      ) values (
+        ${input.processId}::uuid,
+        ${input.userId}::uuid,
+        'sketch_saved',
+        'Croqui urbano salvo ou atualizado.',
+        ${sql.json({ settings: input.settings })}
+      )
+    `;
+    return true;
   } finally {
     await sql.end();
   }

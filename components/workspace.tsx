@@ -6,6 +6,7 @@ import {
   Check,
   CheckCircle2,
   Download,
+  DraftingCompass,
   ExternalLink,
   FileCheck2,
   FileText,
@@ -17,6 +18,7 @@ import {
   Sparkles,
   UploadCloud,
 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AppHeader } from "@/components/app-header";
 import type {
@@ -414,6 +416,13 @@ export function Workspace({
               </select>
             </div>
             <div className="process-toolbar-actions">
+              <Link
+                className="button secondary"
+                href={`/croquis/novo?processo=${initialProcess.id}`}
+              >
+                <DraftingCompass size={16} />
+                Criar croqui urbano
+              </Link>
               {initialProcess.sourceAvailable && (
                 <a
                   className="button secondary"

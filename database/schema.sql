@@ -184,9 +184,24 @@ create table if not exists process_events (
       'updated',
       'status_changed',
       'pdf_generated',
-      'source_viewed'
+      'source_viewed',
+      'sketch_saved'
     ))
 );
+
+alter table process_events
+  drop constraint if exists process_events_action_check;
+
+alter table process_events
+  add constraint process_events_action_check
+    check (action in (
+      'created',
+      'updated',
+      'status_changed',
+      'pdf_generated',
+      'source_viewed',
+      'sketch_saved'
+    ));
 
 create index if not exists process_events_process_idx
   on process_events (process_id, created_at desc);
@@ -202,3 +217,19 @@ where not exists (
   select 1 from process_events event
   where event.process_id = process.id and event.action = 'created'
 );
+
+create table if not exists urban_sketches (
+  id uuid primary key default gen_random_uuid(),
+  process_id uuid not null unique
+    references topographic_processes (id) on delete cascade,
+  created_by_user_id uuid references app_users (id),
+  settings jsonb not null default '{}'::jsonb,
+  status text not null default 'review',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint urban_sketches_status_check
+    check (status in ('review', 'finalized'))
+);
+
+create index if not exists urban_sketches_created_at_idx
+  on urban_sketches (created_at desc);
