@@ -8,6 +8,10 @@ const schema = {
   additionalProperties: false,
   properties: {
     claimantName: { type: "string" },
+    claimantSex: {
+      type: "string",
+      enum: ["female", "male", "not_informed"],
+    },
     cpf: { type: "string" },
     nationality: { type: "string" },
     residence: { type: "string" },
@@ -46,6 +50,7 @@ const schema = {
   },
   required: [
     "claimantName",
+    "claimantSex",
     "cpf",
     "nationality",
     "residence",
@@ -100,6 +105,7 @@ export async function extractTopographicData(
 Regras obrigatórias:
 - Não invente dados ilegíveis; use string vazia ou null e registre a dúvida em reviewNotes.
 - Extraia no campo cpf o CPF ou o CNPJ informado no croqui.
+- Para claimantSex, use female ou male somente quando o croqui ou a mensagem complementar indicarem claramente o sexo; caso contrário, use not_informed para revisão humana.
 - A nacionalidade padrão é "brasileira", exceto quando a mensagem complementar disser outra.
 - A residência é o mesmo endereço do imóvel, exceto quando a mensagem complementar informar outro endereço.
 - Em qualquer limite sem nome de vizinho ou rua, use exatamente "TERRENOS DE TERCEIROS".

@@ -15,10 +15,16 @@ import {
   Sparkles,
   UploadCloud,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   boundaryLabels,
+  defaultSexOptions,
+  defaultTechnicalResponsible,
+  defaultWorksInspector,
   sampleTopographicData,
+  type SexCode,
+  type SexOption,
+  type StaffMember,
   type TopographicData,
 } from "@/lib/topographic";
 
@@ -56,6 +62,31 @@ function Field({
   );
 }
 
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function Section({
   number,
   title,
@@ -89,6 +120,45 @@ export function Workspace() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [generatedName, setGeneratedName] = useState("");
+  const [sexOptions, setSexOptions] =
+    useState<SexOption[]>(defaultSexOptions);
+  const [staff, setStaff] = useState<StaffMember[]>([
+    defaultTechnicalResponsible,
+    defaultWorksInspector,
+  ]);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/reference-data", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return (await response.json()) as {
+          sexOptions: SexOption[];
+          staff: StaffMember[];
+        };
+      })
+      .then((referenceData) => {
+        if (!active || !referenceData) return;
+        setSexOptions(referenceData.sexOptions);
+        setStaff(referenceData.staff);
+        const technicalResponsible = referenceData.staff.find(
+          (member) => member.role === "technical_responsible",
+        );
+        const worksInspector = referenceData.staff.find(
+          (member) => member.role === "works_inspector",
+        );
+        setData((current) => ({
+          ...current,
+          technicalResponsible:
+            technicalResponsible ?? current.technicalResponsible,
+          worksInspector: worksInspector ?? current.worksInspector,
+        }));
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const currentIndex = steps.findIndex((item) => item.id === step);
   const completeness = useMemo(() => {
@@ -366,6 +436,17 @@ export function Workspace() {
                       value={data.claimantName}
                       onChange={(value) => update("claimantName", value)}
                     />
+                    <SelectField
+                      label="Sexo do posseiro"
+                      value={data.claimantSex}
+                      options={sexOptions.map((option) => ({
+                        value: option.code,
+                        label: option.label,
+                      }))}
+                      onChange={(value) =>
+                        update("claimantSex", value as SexCode)
+                      }
+                    />
                     <Field
                       label="CPF/CNPJ"
                       value={data.cpf}
@@ -547,6 +628,109 @@ export function Workspace() {
                         }
                       />
                     </div>
+                  </div>
+                </Section>
+
+                <Section
+                  number="05"
+                  title="Responsáveis pelo documento"
+                  description="Servidores, sexo e registros exibidos nas assinaturas."
+                >
+                  <div className="form-grid three">
+                    <SelectField
+                      label="Responsável técnico"
+                      value={
+                        data.technicalResponsible.id ??
+                        data.technicalResponsible.fullName
+                      }
+                      options={staff
+                        .filter(
+                          (member) =>
+                            member.role === "technical_responsible",
+                        )
+                        .map((member) => ({
+                          value: member.id ?? member.fullName,
+                          label: member.fullName,
+                        }))}
+                      onChange={(value) => {
+                        const selected = staff.find(
+                          (member) =>
+                            member.role === "technical_responsible" &&
+                            (member.id ?? member.fullName) === value,
+                        );
+                        if (selected) update("technicalResponsible", selected);
+                      }}
+                    />
+                    <SelectField
+                      label="Sexo do responsável técnico"
+                      value={data.technicalResponsible.sex}
+                      options={sexOptions.map((option) => ({
+                        value: option.code,
+                        label: option.label,
+                      }))}
+                      onChange={(value) =>
+                        update("technicalResponsible", {
+                          ...data.technicalResponsible,
+                          sex: value as SexCode,
+                        })
+                      }
+                    />
+                    <Field
+                      label="Registro do responsável técnico"
+                      value={data.technicalResponsible.registration}
+                      onChange={(value) =>
+                        update("technicalResponsible", {
+                          ...data.technicalResponsible,
+                          registration: value,
+                        })
+                      }
+                    />
+                    <SelectField
+                      label="Fiscal de obras"
+                      value={
+                        data.worksInspector.id ?? data.worksInspector.fullName
+                      }
+                      options={staff
+                        .filter(
+                          (member) => member.role === "works_inspector",
+                        )
+                        .map((member) => ({
+                          value: member.id ?? member.fullName,
+                          label: member.fullName,
+                        }))}
+                      onChange={(value) => {
+                        const selected = staff.find(
+                          (member) =>
+                            member.role === "works_inspector" &&
+                            (member.id ?? member.fullName) === value,
+                        );
+                        if (selected) update("worksInspector", selected);
+                      }}
+                    />
+                    <SelectField
+                      label="Sexo do fiscal de obras"
+                      value={data.worksInspector.sex}
+                      options={sexOptions.map((option) => ({
+                        value: option.code,
+                        label: option.label,
+                      }))}
+                      onChange={(value) =>
+                        update("worksInspector", {
+                          ...data.worksInspector,
+                          sex: value as SexCode,
+                        })
+                      }
+                    />
+                    <Field
+                      label="Matrícula do fiscal"
+                      value={data.worksInspector.registration}
+                      onChange={(value) =>
+                        update("worksInspector", {
+                          ...data.worksInspector,
+                          registration: value,
+                        })
+                      }
+                    />
                   </div>
                 </Section>
 

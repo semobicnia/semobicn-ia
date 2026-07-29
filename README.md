@@ -28,6 +28,18 @@ Para analisar croquis reais, configure as variáveis descritas em `.env.example`
 
 Execute o conteúdo de `database/schema.sql` no editor SQL do Neon.
 
+O esquema cria:
+
+- `sex_options`: opções Feminino, Masculino e Não informado;
+- `municipal_staff`: responsáveis técnicos e fiscais de obras, com sexo,
+  registro e situação ativa;
+- `topographic_processes`: processos analisados, incluindo o sexo do posseiro
+  e os servidores escolhidos para assinar o documento.
+
+O endpoint `GET /api/reference-data` carrega essas opções na revisão. Quando
+`DATABASE_URL` ainda não estiver configurada, o sistema usa os servidores
+padrão localmente para não interromper a geração dos documentos.
+
 ## Publicação
 
 Importe este repositório na Vercel e cadastre as mesmas variáveis de ambiente do

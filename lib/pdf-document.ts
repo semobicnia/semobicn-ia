@@ -231,10 +231,25 @@ export async function createTopographicPdf(data: TopographicData) {
   const semobiLogo = await document.embedPng(semobiLogoBytes);
   const cityLogo = await document.embedPng(cityLogoBytes);
   const page = document.addPage([A4.width, A4.height]);
-  const nationality = data.nationality.trim().toLowerCase();
-  const feminine = nationality.endsWith("a");
-  const holder = feminine ? "portadora" : "portador";
-  const domiciled = feminine ? "domiciliada" : "domiciliado";
+  const nationalityLower = data.nationality.trim().toLowerCase();
+  const nationality =
+    data.claimantSex === "female" && nationalityLower === "brasileiro"
+      ? "brasileira"
+      : data.claimantSex === "male" && nationalityLower === "brasileira"
+        ? "brasileiro"
+        : data.nationality;
+  const holder =
+    data.claimantSex === "female"
+      ? "portadora"
+      : data.claimantSex === "male"
+        ? "portador"
+        : "titular";
+  const residenceText =
+    data.claimantSex === "female"
+      ? `residente e domiciliada nesta cidade de ${data.city} - ${data.state}.`
+      : data.claimantSex === "male"
+        ? `residente e domiciliado nesta cidade de ${data.city} - ${data.state}.`
+        : `residente nesta cidade de ${data.city} - ${data.state}.`;
 
   const visibleLogoTop = A4.height - TOP_MARGIN;
   const logoGap = 14;
@@ -326,14 +341,12 @@ export async function createTopographicPdf(data: TopographicData) {
         text: `${data.claimantName.toUpperCase()},`,
         font: "bold",
       },
-      { text: `${data.nationality}, ${holder} do` },
+      { text: `${nationality}, ${holder} do` },
       {
         text: `CPF/CNPJ nº ${data.cpf || "não informado"},`,
         font: "bold",
       },
-      {
-        text: `residente e ${domiciled} nesta cidade de ${data.city} - ${data.state}.`,
-      },
+      { text: residenceText },
     ],
     y,
     fonts,
@@ -463,28 +476,33 @@ export async function createTopographicPdf(data: TopographicData) {
     thickness: 0.5,
     color: BLACK,
   });
-  const leftName = "Gabriel de Araújo Ramos";
-  const rightName = "Elesbão Pinto Magalhães Filho";
+  const leftName = data.technicalResponsible.fullName;
+  const rightName = data.worksInspector.fullName;
+  const technicalTitle =
+    data.technicalResponsible.sex === "female"
+      ? "Resp. Técnica - SEMOBI"
+      : data.technicalResponsible.sex === "male"
+        ? "Resp. Técnico - SEMOBI"
+        : "Resp. Técnico(a) - SEMOBI";
+  const inspectorTitle = "Fiscal de Obras";
+  const technicalRegistration = data.technicalResponsible.registration;
+  const inspectorRegistration = data.worksInspector.registration;
   page.drawText(leftName, {
     x: 177 - fonts.regular.widthOfTextAtSize(leftName, 8.7) / 2,
     y: signatureY + 11,
     size: 8.7,
     font: fonts.regular,
   });
-  page.drawText("Resp. Técnico - SEMOBI", {
-    x: 177 - fonts.regular.widthOfTextAtSize("Resp. Técnico - SEMOBI", 7.7) / 2,
+  page.drawText(technicalTitle, {
+    x: 177 - fonts.regular.widthOfTextAtSize(technicalTitle, 7.7) / 2,
     y: signatureY,
     size: 7.7,
     font: fonts.regular,
   });
-  page.drawText("CREA/CFT: 1909916552/23134151391", {
+  page.drawText(technicalRegistration, {
     x:
       177 -
-      fonts.regular.widthOfTextAtSize(
-        "CREA/CFT: 1909916552/23134151391",
-        6.8,
-      ) /
-        2,
+      fonts.regular.widthOfTextAtSize(technicalRegistration, 6.8) / 2,
     y: signatureY - 11,
     size: 6.8,
     font: fonts.regular,
@@ -495,14 +513,14 @@ export async function createTopographicPdf(data: TopographicData) {
     size: 8.4,
     font: fonts.regular,
   });
-  page.drawText("Fiscal de Obras", {
-    x: 418 - fonts.regular.widthOfTextAtSize("Fiscal de Obras", 7.7) / 2,
+  page.drawText(inspectorTitle, {
+    x: 418 - fonts.regular.widthOfTextAtSize(inspectorTitle, 7.7) / 2,
     y: signatureY,
     size: 7.7,
     font: fonts.regular,
   });
-  page.drawText("Mat. 110351", {
-    x: 418 - fonts.regular.widthOfTextAtSize("Mat. 110351", 7.7) / 2,
+  page.drawText(inspectorRegistration, {
+    x: 418 - fonts.regular.widthOfTextAtSize(inspectorRegistration, 7.7) / 2,
     y: signatureY - 11,
     size: 7.7,
     font: fonts.regular,

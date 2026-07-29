@@ -1,12 +1,82 @@
 create extension if not exists pgcrypto;
 
+create table if not exists sex_options (
+  code text primary key,
+  label text not null,
+  sort_order smallint not null default 0,
+  active boolean not null default true,
+  constraint sex_options_code_check
+    check (code in ('female', 'male', 'not_informed'))
+);
+
+insert into sex_options (code, label, sort_order)
+values
+  ('female', 'Feminino', 1),
+  ('male', 'Masculino', 2),
+  ('not_informed', 'Não informado', 3)
+on conflict (code) do update
+set
+  label = excluded.label,
+  sort_order = excluded.sort_order,
+  active = true;
+
+create table if not exists municipal_staff (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null,
+  role text not null,
+  sex_code text not null references sex_options (code),
+  registration text not null,
+  active boolean not null default true,
+  sort_order smallint not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint municipal_staff_role_check
+    check (role in ('technical_responsible', 'works_inspector'))
+);
+
+create unique index if not exists municipal_staff_role_name_idx
+  on municipal_staff (role, full_name);
+
+insert into municipal_staff (
+  full_name,
+  role,
+  sex_code,
+  registration,
+  sort_order
+)
+values
+  (
+    'Gabriel de Araújo Ramos',
+    'technical_responsible',
+    'male',
+    'CREA/CFT: 1909916552/23134151391',
+    1
+  ),
+  (
+    'Elesbão Pinto Magalhães Filho',
+    'works_inspector',
+    'male',
+    'Mat. 110351',
+    1
+  )
+on conflict (role, full_name) do update
+set
+  sex_code = excluded.sex_code,
+  registration = excluded.registration,
+  active = true,
+  updated_at = now();
+
 create table if not exists topographic_processes (
   id uuid primary key default gen_random_uuid(),
   status text not null default 'review',
   claimant_name text not null,
+  claimant_sex_code text not null default 'not_informed'
+    references sex_options (code),
   property_address text not null,
   block_number text,
   lot_number text,
+  technical_responsible_id uuid references municipal_staff (id),
+  works_inspector_id uuid references municipal_staff (id),
   source_pdf_url text,
   source_public_id text,
   supplementary_message text,
@@ -15,5 +85,36 @@ create table if not exists topographic_processes (
   updated_at timestamptz not null default now()
 );
 
+alter table topographic_processes
+  add column if not exists claimant_sex_code text not null
+    default 'not_informed' references sex_options (code),
+  add column if not exists technical_responsible_id uuid
+    references municipal_staff (id),
+  add column if not exists works_inspector_id uuid
+    references municipal_staff (id);
+
+update topographic_processes
+set technical_responsible_id = (
+  select id
+  from municipal_staff
+  where role = 'technical_responsible' and active
+  order by sort_order, full_name
+  limit 1
+)
+where technical_responsible_id is null;
+
+update topographic_processes
+set works_inspector_id = (
+  select id
+  from municipal_staff
+  where role = 'works_inspector' and active
+  order by sort_order, full_name
+  limit 1
+)
+where works_inspector_id is null;
+
 create index if not exists topographic_processes_created_at_idx
   on topographic_processes (created_at desc);
+
+create index if not exists topographic_processes_claimant_sex_idx
+  on topographic_processes (claimant_sex_code);

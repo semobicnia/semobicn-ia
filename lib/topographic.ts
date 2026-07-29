@@ -1,4 +1,19 @@
 export type BoundarySide = "front" | "right" | "left" | "back";
+export type SexCode = "female" | "male" | "not_informed";
+export type StaffRole = "technical_responsible" | "works_inspector";
+
+export type SexOption = {
+  code: SexCode;
+  label: string;
+};
+
+export type StaffMember = {
+  id: string | null;
+  fullName: string;
+  role: StaffRole;
+  sex: SexCode;
+  registration: string;
+};
 
 export type Boundary = {
   side: BoundarySide;
@@ -9,6 +24,7 @@ export type Boundary = {
 
 export type TopographicData = {
   claimantName: string;
+  claimantSex: SexCode;
   cpf: string;
   nationality: string;
   residence: string;
@@ -29,6 +45,30 @@ export type TopographicData = {
   boundaries: Boundary[];
   confidence: number;
   reviewNotes: string[];
+  technicalResponsible: StaffMember;
+  worksInspector: StaffMember;
+};
+
+export const defaultSexOptions: SexOption[] = [
+  { code: "female", label: "Feminino" },
+  { code: "male", label: "Masculino" },
+  { code: "not_informed", label: "Não informado" },
+];
+
+export const defaultTechnicalResponsible: StaffMember = {
+  id: null,
+  fullName: "Gabriel de Araújo Ramos",
+  role: "technical_responsible",
+  sex: "male",
+  registration: "CREA/CFT: 1909916552/23134151391",
+};
+
+export const defaultWorksInspector: StaffMember = {
+  id: null,
+  fullName: "Elesbão Pinto Magalhães Filho",
+  role: "works_inspector",
+  sex: "male",
+  registration: "Mat. 110351",
 };
 
 export const boundaryLabels: Record<BoundarySide, string> = {
@@ -40,6 +80,7 @@ export const boundaryLabels: Record<BoundarySide, string> = {
 
 export const initialTopographicData: TopographicData = {
   claimantName: "",
+  claimantSex: "not_informed",
   cpf: "",
   nationality: "brasileira",
   residence: "",
@@ -74,10 +115,13 @@ export const initialTopographicData: TopographicData = {
   ],
   confidence: 0,
   reviewNotes: [],
+  technicalResponsible: defaultTechnicalResponsible,
+  worksInspector: defaultWorksInspector,
 };
 
 export const sampleTopographicData: TopographicData = {
   claimantName: "MARIZA SILVA DOS SANTOS",
+  claimantSex: "female",
   cpf: "070.609.013-61",
   nationality: "brasileira",
   residence: "Rua Deusadete Barros, Centro, Coelho Neto - MA",
@@ -130,7 +174,26 @@ export const sampleTopographicData: TopographicData = {
     "O limite de fundo não continha nome de vizinho ou rua e foi padronizado como TERRENOS DE TERCEIROS.",
     "Área construída indicada como zero; o documento exibirá Sem edificação.",
   ],
+  technicalResponsible: defaultTechnicalResponsible,
+  worksInspector: defaultWorksInspector,
 };
+
+function normalizeSex(value: unknown): SexCode {
+  return value === "female" || value === "male" ? value : "not_informed";
+}
+
+function normalizeStaffMember(
+  value: Partial<StaffMember> | undefined,
+  fallback: StaffMember,
+): StaffMember {
+  return {
+    id: typeof value?.id === "string" ? value.id : fallback.id,
+    fullName: value?.fullName?.trim() || fallback.fullName,
+    role: fallback.role,
+    sex: normalizeSex(value?.sex ?? fallback.sex),
+    registration: value?.registration?.trim() || fallback.registration,
+  };
+}
 
 export function normalizeTopographicData(
   data: Partial<TopographicData>,
@@ -138,6 +201,7 @@ export function normalizeTopographicData(
   const merged: TopographicData = {
     ...initialTopographicData,
     ...data,
+    claimantSex: normalizeSex(data.claimantSex),
     boundaries: initialTopographicData.boundaries.map((fallback) => {
       const found = data.boundaries?.find(
         (boundary) => boundary.side === fallback.side,
@@ -156,6 +220,14 @@ export function normalizeTopographicData(
       data.improvements?.filter(Boolean) ??
       initialTopographicData.improvements,
     reviewNotes: data.reviewNotes?.filter(Boolean) ?? [],
+    technicalResponsible: normalizeStaffMember(
+      data.technicalResponsible,
+      defaultTechnicalResponsible,
+    ),
+    worksInspector: normalizeStaffMember(
+      data.worksInspector,
+      defaultWorksInspector,
+    ),
   };
 
   if (!merged.residence.trim()) {
