@@ -1,6 +1,7 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import {
   PDFDocument,
-  StandardFonts,
   degrees,
   rgb,
   type PDFFont,
@@ -8,15 +9,46 @@ import {
 } from "pdf-lib";
 import { boundaryLabels, type TopographicData } from "./topographic";
 
-const A4 = { width: 595.28, height: 841.89 };
-const margin = 50;
-const textWidth = A4.width - margin * 2;
+// O pacote é mantido localmente para que a incorporação da Open Sans funcione
+// de forma idêntica no desenvolvimento e na Vercel.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const fontkit = require("./vendor/fontkit-bundle.cjs");
 
-function formatNumber(value: number | null, digits = 2) {
+const A4 = { width: 595.28, height: 841.89 };
+const MARGIN = 43;
+const TEXT_WIDTH = A4.width - MARGIN * 2;
+const BODY_SIZE = 11;
+const BODY_LINE_HEIGHT = 14.7;
+const BLACK = rgb(0.035, 0.035, 0.035);
+const BLUE = rgb(0.02, 0.3, 0.7);
+
+type FontStyle = "regular" | "bold";
+
+type Fonts = {
+  regular: PDFFont;
+  bold: PDFFont;
+};
+
+type RichSpan = {
+  text: string;
+  font?: FontStyle;
+  italic?: boolean;
+  underline?: boolean;
+};
+
+type RichToken = Omit<RichSpan, "text"> & {
+  text: string;
+  width: number;
+};
+
+function formatNumber(
+  value: number | null,
+  options?: { minimumFractionDigits?: number; maximumFractionDigits?: number },
+) {
   if (value === null) return "Não informado";
   return value.toLocaleString("pt-BR", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
+    minimumFractionDigits: options?.minimumFractionDigits ?? 0,
+    maximumFractionDigits: options?.maximumFractionDigits ?? 2,
   });
 }
 
@@ -29,279 +61,452 @@ function formatDate(value: string) {
   }).format(date);
 }
 
-function splitText(text: string, font: PDFFont, size: number, width: number) {
-  const words = text.replace(/\s+/g, " ").trim().split(" ");
-  const lines: string[] = [];
-  let line = "";
+function getFont(fonts: Fonts, style: FontStyle | undefined) {
+  return style === "bold" ? fonts.bold : fonts.regular;
+}
 
-  for (const word of words) {
-    const candidate = line ? `${line} ${word}` : word;
-    if (font.widthOfTextAtSize(candidate, size) <= width) {
-      line = candidate;
-    } else {
-      if (line) lines.push(line);
-      line = word;
+function toTokens(spans: RichSpan[], fonts: Fonts, size: number) {
+  const tokens: RichToken[] = [];
+  for (const span of spans) {
+    for (const word of span.text.replace(/\s+/g, " ").trim().split(" ")) {
+      if (!word) continue;
+      const font = getFont(fonts, span.font);
+      tokens.push({
+        text: word,
+        font: span.font,
+        italic: span.italic,
+        underline: span.underline,
+        width: font.widthOfTextAtSize(word, size),
+      });
     }
   }
-  if (line) lines.push(line);
+  return tokens;
+}
+
+function wrapTokens(tokens: RichToken[], fonts: Fonts, size: number, width: number) {
+  const lines: RichToken[][] = [];
+  const spaceWidth = fonts.regular.widthOfTextAtSize(" ", size);
+  let line: RichToken[] = [];
+  let lineWidth = 0;
+
+  for (const token of tokens) {
+    const nextWidth = line.length
+      ? lineWidth + spaceWidth + token.width
+      : token.width;
+    if (line.length && nextWidth > width) {
+      lines.push(line);
+      line = [token];
+      lineWidth = token.width;
+    } else {
+      line.push(token);
+      lineWidth = nextWidth;
+    }
+  }
+  if (line.length) lines.push(line);
   return lines;
 }
 
-function drawParagraph(
+function drawRichParagraph(
+  page: PDFPage,
+  spans: RichSpan[],
+  y: number,
+  fonts: Fonts,
+  options?: {
+    size?: number;
+    lineHeight?: number;
+    justify?: boolean;
+    width?: number;
+    x?: number;
+  },
+) {
+  const size = options?.size ?? BODY_SIZE;
+  const lineHeight = options?.lineHeight ?? BODY_LINE_HEIGHT;
+  const width = options?.width ?? TEXT_WIDTH;
+  const startX = options?.x ?? MARGIN;
+  const tokens = toTokens(spans, fonts, size);
+  const lines = wrapTokens(tokens, fonts, size, width);
+  const normalSpace = fonts.regular.widthOfTextAtSize(" ", size);
+
+  lines.forEach((line, lineIndex) => {
+    const contentWidth = line.reduce((sum, token) => sum + token.width, 0);
+    const isLast = lineIndex === lines.length - 1;
+    const spaces = Math.max(0, line.length - 1);
+    const spaceWidth =
+      options?.justify !== false && !isLast && spaces > 0
+        ? (width - contentWidth) / spaces
+        : normalSpace;
+    let x = startX;
+    const baseline = y - lineIndex * lineHeight;
+
+    line.forEach((token, tokenIndex) => {
+      const font = getFont(fonts, token.font);
+      page.drawText(token.text, {
+        x,
+        y: baseline,
+        size,
+        font,
+        color: BLACK,
+      });
+      if (token.underline) {
+        page.drawLine({
+          start: { x, y: baseline - 1.6 },
+          end: { x: x + token.width, y: baseline - 1.6 },
+          thickness: 0.72,
+          color: BLACK,
+        });
+      }
+      x += token.width + (tokenIndex < line.length - 1 ? spaceWidth : 0);
+    });
+  });
+
+  return y - lines.length * lineHeight;
+}
+
+function drawHeading(
   page: PDFPage,
   text: string,
   y: number,
-  font: PDFFont,
-  options?: { size?: number; lineHeight?: number; color?: ReturnType<typeof rgb> },
+  fonts: Fonts,
+  size = 11.8,
 ) {
-  const size = options?.size ?? 10.5;
-  const lineHeight = options?.lineHeight ?? 15.5;
-  const lines = splitText(text, font, size, textWidth);
-  lines.forEach((line, index) => {
-    page.drawText(line, {
-      x: margin,
-      y: y - index * lineHeight,
-      size,
-      font,
-      color: options?.color ?? rgb(0.08, 0.1, 0.09),
-    });
+  page.drawText(text, {
+    x: MARGIN,
+    y,
+    size,
+    font: fonts.bold,
+    color: BLACK,
   });
-  return y - lines.length * lineHeight;
+  return y - 20;
+}
+
+function boundaryName(side: TopographicData["boundaries"][number]["side"]) {
+  if (side === "front") return "Frente";
+  if (side === "right") return "Flanco direito";
+  if (side === "left") return "Flanco esquerdo";
+  return "Fundo";
+}
+
+function boundarySentence(
+  boundary: TopographicData["boundaries"][number],
+  endMark: "," | ".",
+): RichSpan[] {
+  const label = (boundary.label || "TERRENOS DE TERCEIROS").toUpperCase();
+  const measurement =
+    boundary.measurement === null
+      ? "medida não informada"
+      : `${formatNumber(boundary.measurement, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}m`;
+  const measurementWords = boundary.measurementInWords
+    ? `; (${boundary.measurementInWords})`
+    : "";
+
+  return [
+    { text: boundaryName(boundary.side), font: "bold" },
+    { text: "limitando-se com" },
+    { text: label, font: "bold", italic: true, underline: true },
+    { text: "medindo:" },
+    { text: `${measurement};`, font: "bold", italic: true, underline: true },
+    {
+      text: measurementWords
+        ? `${measurementWords.slice(2)}${endMark}`
+        : endMark,
+    },
+  ];
+}
+
+async function loadAsset(relativePath: string) {
+  return readFile(path.join(process.cwd(), "public", relativePath));
 }
 
 export async function createTopographicPdf(data: TopographicData) {
   const document = await PDFDocument.create();
-  const page = document.addPage([A4.width, A4.height]);
-  const regular = await document.embedFont(StandardFonts.Helvetica);
-  const bold = await document.embedFont(StandardFonts.HelveticaBold);
-  const italic = await document.embedFont(StandardFonts.HelveticaOblique);
-  const boldItalic = await document.embedFont(
-    StandardFonts.HelveticaBoldOblique,
-  );
+  document.registerFontkit(fontkit);
 
-  page.drawText("SEMOBI", {
-    x: margin,
-    y: 790,
-    size: 25,
-    font: bold,
-    color: rgb(0.05, 0.28, 0.72),
-  });
-  page.drawText("SECRETARIA MUNICIPAL DE OBRAS E INFRAESTRUTURA", {
-    x: margin + 2,
-    y: 778,
-    size: 5.8,
-    font: bold,
-    color: rgb(0.05, 0.28, 0.72),
-  });
-  page.drawText("PREFEITURA DE", {
-    x: 338,
-    y: 800,
-    size: 6.5,
-    font: bold,
-    color: rgb(0.05, 0.28, 0.72),
-  });
-  page.drawText("COELHO NETO", {
-    x: 338,
-    y: 782,
-    size: 18,
-    font: bold,
-    color: rgb(0.05, 0.28, 0.72),
-  });
-  page.drawText("A MARCA DO TRABALHO", {
-    x: 375,
-    y: 771,
-    size: 5.8,
-    font: bold,
-    color: rgb(0.05, 0.28, 0.72),
+  const [regularBytes, boldBytes, semobiLogoBytes, cityLogoBytes] =
+    await Promise.all([
+      loadAsset("fonts/OpenSans-Regular.ttf"),
+      loadAsset("fonts/OpenSans-Bold.ttf"),
+      loadAsset("assets/logo-semobi.png"),
+      loadAsset("assets/logo-coelho-neto.png"),
+    ]);
+
+  const fonts: Fonts = {
+    regular: await document.embedFont(regularBytes, { subset: false }),
+    bold: await document.embedFont(boldBytes, { subset: false }),
+  };
+  const semobiLogo = await document.embedPng(semobiLogoBytes);
+  const cityLogo = await document.embedPng(cityLogoBytes);
+  const page = document.addPage([A4.width, A4.height]);
+  const nationality = data.nationality.trim().toLowerCase();
+  const feminine = nationality.endsWith("a");
+  const holder = feminine ? "portadora" : "portador";
+  const domiciled = feminine ? "domiciliada" : "domiciliado";
+
+  const semobiWidth = 206;
+  const semobiHeight = (semobiLogo.height / semobiLogo.width) * semobiWidth;
+  const cityWidth = 196;
+  const cityHeight = (cityLogo.height / cityLogo.width) * cityWidth;
+  page.drawImage(semobiLogo, {
+    x: 63,
+    y: 773,
+    width: semobiWidth,
+    height: semobiHeight,
   });
   page.drawLine({
-    start: { x: margin, y: 755 },
-    end: { x: A4.width - margin, y: 755 },
-    thickness: 0.6,
-    color: rgb(0.15, 0.15, 0.15),
+    start: { x: 282, y: 777 },
+    end: { x: 282, y: 824 },
+    thickness: 1.25,
+    color: BLUE,
+  });
+  page.drawImage(cityLogo, {
+    x: 300,
+    y: 771,
+    width: cityWidth,
+    height: cityHeight,
+  });
+  page.drawLine({
+    start: { x: MARGIN, y: 755 },
+    end: { x: A4.width - MARGIN, y: 755 },
+    thickness: 0.65,
+    color: BLACK,
   });
 
   page.drawText("SEMOBI", {
-    x: 185,
-    y: 240,
-    size: 78,
-    font: bold,
-    color: rgb(0.93, 0.94, 0.93),
-    rotate: degrees(48),
+    x: 138,
+    y: 238,
+    size: 76,
+    font: fonts.bold,
+    color: rgb(0.95, 0.95, 0.95),
+    rotate: degrees(51),
   });
 
-  let y = 718;
-  page.drawText("1 - INFORMAÇÕES TOPOGRÁFICAS", {
-    x: margin,
-    y,
-    size: 11,
-    font: boldItalic,
-  });
-  y -= 21;
-  y = drawParagraph(
+  let y = 716;
+  y = drawHeading(page, "1 - INFORMAÇÕES TOPOGRÁFICAS", y, fonts);
+  y = drawRichParagraph(
     page,
-    `Com referência ao terreno requerido por ${data.claimantName.toUpperCase()}, ${data.nationality}, portador(a) do CPF nº ${data.cpf || "não informado"}, residente e domiciliado(a) em ${data.residence}.`,
+    [
+      { text: "Com referência do terreno requerido por" },
+      {
+        text: `${data.claimantName.toUpperCase()},`,
+        font: "bold",
+        italic: true,
+        underline: true,
+      },
+      { text: `${data.nationality}, ${holder} do` },
+      {
+        text: `CPF. nº ${data.cpf || "não informado"},`,
+        font: "bold",
+      },
+      {
+        text: `residente e ${domiciled} nesta cidade de ${data.city} - ${data.state}.`,
+      },
+    ],
     y,
-    regular,
-  );
-  y -= 5;
-
-  page.drawText("2 - SITUAÇÃO", {
-    x: margin,
-    y,
-    size: 11,
-    font: boldItalic,
-  });
-  y -= 21;
-  const situation = [
-    data.propertyAddress.toUpperCase(),
-    data.block ? `QUADRA: ${data.block}` : "",
-    data.lot ? `LOTE: ${data.lot}` : "",
-    data.neighborhood ? `BAIRRO: ${data.neighborhood.toUpperCase()}` : "",
-    `${data.city} - ${data.state}`,
-  ]
-    .filter(Boolean)
-    .join(", ");
-  y = drawParagraph(page, situation, y, bold);
-  y -= 8;
-
-  page.drawText("Com os seguintes limites:", {
-    x: margin,
-    y,
-    size: 10.5,
-    font: boldItalic,
-  });
-  y -= 21;
-
-  for (const boundary of data.boundaries) {
-    const measurement =
-      boundary.measurement === null
-        ? "medida não informada"
-        : `${formatNumber(boundary.measurement)} m`;
-    const words = boundary.measurementInWords
-      ? ` (${boundary.measurementInWords})`
-      : "";
-    y = drawParagraph(
-      page,
-      `${boundaryLabels[boundary.side]} limitando-se com ${boundary.label || "TERRENOS DE TERCEIROS"}, medindo ${measurement}${words}.`,
-      y,
-      regular,
-    );
-    y -= 2;
-  }
-
-  const landWords = data.landAreaInWords
-    ? ` (${data.landAreaInWords})`
-    : "";
-  y = drawParagraph(
-    page,
-    `Perfazendo uma área total equivalente a ${formatNumber(data.landArea)} m²${landWords}.`,
-    y,
-    bold,
+    fonts,
+    { justify: true },
   );
   y -= 7;
 
-  page.drawText("3 - UTILIZAÇÃO", {
-    x: margin,
-    y,
-    size: 11,
-    font: boldItalic,
-  });
-  y -= 21;
+  y = drawHeading(page, "2 - SITUAÇÃO", y, fonts);
+  const situationSpans: RichSpan[] = [
+    {
+      text: `${data.propertyAddress.toUpperCase()},`,
+      font: "bold",
+      underline: true,
+    },
+  ];
+  if (data.block) {
+    situationSpans.push({
+      text: `QUADRA: ${data.block},`,
+      font: "bold",
+      underline: true,
+    });
+  }
+  if (data.lot) {
+    situationSpans.push({
+      text: `LOTE: ${data.lot},`,
+      font: "bold",
+      underline: true,
+    });
+  }
+  if (data.neighborhood) {
+    situationSpans.push(
+      { text: "Bairro:" },
+      {
+        text: `${data.neighborhood.toUpperCase()},`,
+        font: "bold",
+        underline: true,
+      },
+    );
+  }
+  situationSpans.push({ text: `${data.city} - ${data.state}.` });
+  y = drawRichParagraph(page, situationSpans, y, fonts, { justify: false });
+  y -= 18;
 
+  y = drawRichParagraph(
+    page,
+    [{ text: "Com os seguintes limite e :", font: "bold", italic: true }],
+    y,
+    fonts,
+    { justify: false, size: 11.2 },
+  );
+  y -= 4;
+
+  const boundarySpans: RichSpan[] = [];
+  data.boundaries.forEach((boundary, index) => {
+    boundarySpans.push(
+      ...boundarySentence(
+        boundary,
+        index < data.boundaries.length - 1 ? "," : ".",
+      ),
+    );
+  });
+  const landArea = `${formatNumber(data.landArea, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}m²;`;
+  boundarySpans.push(
+    { text: "Perfazendo uma área total equivalente a" },
+    { text: landArea, font: "bold", italic: true, underline: true },
+  );
+  if (data.landAreaInWords) {
+    boundarySpans.push({ text: `(${data.landAreaInWords}).` });
+  }
+  y = drawRichParagraph(page, boundarySpans, y, fonts, {
+    justify: true,
+    lineHeight: 15.1,
+  });
+  y -= 7;
+
+  y = drawHeading(page, "3 - UTILIZAÇÃO", y, fonts);
   const building =
     data.builtArea && data.builtArea > 0
-      ? `${formatNumber(data.builtArea)} m²${data.builtAreaInWords ? ` (${data.builtAreaInWords})` : ""}`
+      ? `${formatNumber(data.builtArea)}m²${
+          data.builtAreaInWords ? ` (${data.builtAreaInWords})` : ""
+        }`
       : "Sem edificação";
-  y = drawParagraph(page, `I - IMÓVEL: ${building}.`, y, boldItalic);
-  y = drawParagraph(
+  y = drawRichParagraph(
     page,
-    `II - DELIMITAÇÃO: ${data.delimitation}.`,
-    y - 2,
-    italic,
+    [
+      { text: "I - IMÓVEL:", font: "bold", italic: true },
+      { text: `${building}.`, italic: true },
+    ],
+    y,
+    fonts,
+    { justify: false, size: 11 },
   );
-  y = drawParagraph(
+  y -= 3;
+  y = drawRichParagraph(
     page,
-    `III - OUTRAS BENFEITORIAS: ${data.improvements.join(", ")}.`,
-    y - 2,
-    italic,
+    [
+      { text: "II - DELIMITAÇÃO:", font: "bold", italic: true },
+      { text: `${data.delimitation}.`, italic: true },
+    ],
+    y,
+    fonts,
+    { justify: false, size: 11 },
+  );
+  y -= 3;
+  y = drawRichParagraph(
+    page,
+    [
+      { text: "III - OUTRAS BENFEITORIAS:", font: "bold", italic: true },
+      { text: `${data.improvements.join(", ")}.`, italic: true },
+    ],
+    y,
+    fonts,
+    { justify: true, size: 11 },
   );
 
   const dateLine = `${data.city} (${data.state}), ${formatDate(data.documentDate)}.`;
-  const dateWidth = regular.widthOfTextAtSize(dateLine, 10.5);
+  const dateWidth = fonts.regular.widthOfTextAtSize(dateLine, 11);
   page.drawText(dateLine, {
     x: (A4.width - dateWidth) / 2,
-    y: Math.max(y - 48, 178),
-    size: 10.5,
-    font: regular,
+    y: Math.max(y - 42, 174),
+    size: 11,
+    font: fonts.regular,
+    color: BLACK,
   });
 
-  const signatureY = 112;
+  const signatureY = 105;
   page.drawLine({
-    start: { x: 94, y: signatureY + 25 },
+    start: { x: 84, y: signatureY + 25 },
     end: { x: 270, y: signatureY + 25 },
     thickness: 0.5,
+    color: BLACK,
   });
   page.drawLine({
-    start: { x: 326, y: signatureY + 25 },
-    end: { x: 502, y: signatureY + 25 },
+    start: { x: 325, y: signatureY + 25 },
+    end: { x: 511, y: signatureY + 25 },
     thickness: 0.5,
+    color: BLACK,
   });
-  page.drawText("Gabriel de Araújo Ramos", {
-    x: 120,
+  const leftName = "Gabriel de Araújo Ramos";
+  const rightName = "Elesbão Pinto Magalhães Filho";
+  page.drawText(leftName, {
+    x: 177 - fonts.regular.widthOfTextAtSize(leftName, 8.7) / 2,
     y: signatureY + 11,
-    size: 9.5,
-    font: regular,
+    size: 8.7,
+    font: fonts.regular,
   });
   page.drawText("Resp. Técnico - SEMOBI", {
-    x: 126,
-    y: signatureY - 2,
-    size: 8.5,
-    font: regular,
+    x: 177 - fonts.regular.widthOfTextAtSize("Resp. Técnico - SEMOBI", 7.7) / 2,
+    y: signatureY,
+    size: 7.7,
+    font: fonts.regular,
   });
   page.drawText("CREA/CFT: 1909916552/23134151391", {
-    x: 101,
-    y: signatureY - 15,
-    size: 7.8,
-    font: regular,
+    x:
+      177 -
+      fonts.regular.widthOfTextAtSize(
+        "CREA/CFT: 1909916552/23134151391",
+        6.8,
+      ) /
+        2,
+    y: signatureY - 11,
+    size: 6.8,
+    font: fonts.regular,
   });
-  page.drawText("Elesbão Pinto Magalhães Filho", {
-    x: 339,
+  page.drawText(rightName, {
+    x: 418 - fonts.regular.widthOfTextAtSize(rightName, 8.4) / 2,
     y: signatureY + 11,
-    size: 9.2,
-    font: regular,
+    size: 8.4,
+    font: fonts.regular,
   });
   page.drawText("Fiscal de Obras", {
-    x: 389,
-    y: signatureY - 2,
-    size: 8.5,
-    font: regular,
+    x: 418 - fonts.regular.widthOfTextAtSize("Fiscal de Obras", 7.7) / 2,
+    y: signatureY,
+    size: 7.7,
+    font: fonts.regular,
   });
   page.drawText("Mat. 110351", {
-    x: 401,
-    y: signatureY - 15,
-    size: 8.5,
-    font: regular,
+    x: 418 - fonts.regular.widthOfTextAtSize("Mat. 110351", 7.7) / 2,
+    y: signatureY - 11,
+    size: 7.7,
+    font: fonts.regular,
   });
 
   page.drawLine({
-    start: { x: margin, y: 45 },
-    end: { x: A4.width - margin, y: 45 },
+    start: { x: MARGIN, y: 43 },
+    end: { x: A4.width - MARGIN, y: 43 },
     thickness: 0.5,
+    color: BLACK,
   });
-  const footer = "Avenida José Silva, S/N - Bairro Quiabos";
+  const footer1 = "Avenida José Silva, S/N - Bairro Quiabos";
   const footer2 = "Coelho Neto - MA - CEP: 65.620-000";
-  page.drawText(footer, {
-    x: (A4.width - bold.widthOfTextAtSize(footer, 7.5)) / 2,
-    y: 32,
-    size: 7.5,
-    font: bold,
+  page.drawText(footer1, {
+    x: (A4.width - fonts.bold.widthOfTextAtSize(footer1, 7.1)) / 2,
+    y: 29,
+    size: 7.1,
+    font: fonts.bold,
   });
   page.drawText(footer2, {
-    x: (A4.width - bold.widthOfTextAtSize(footer2, 7.5)) / 2,
-    y: 21,
-    size: 7.5,
-    font: bold,
+    x: (A4.width - fonts.bold.widthOfTextAtSize(footer2, 7.1)) / 2,
+    y: 18,
+    size: 7.1,
+    font: fonts.bold,
   });
 
   document.setTitle(

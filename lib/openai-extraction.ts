@@ -88,7 +88,7 @@ export async function extractTopographicData(
   bytes: Uint8Array,
   supplementaryMessage: string,
 ): Promise<TopographicData> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     throw new Error(
       "A chave da OpenAI ainda não foi configurada. Use o exemplo para testar a interface.",

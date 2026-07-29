@@ -54,8 +54,16 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ data, processId });
   } catch (error) {
+    const safeMessages = new Set([
+      "A chave da OpenAI ainda não foi configurada. Use o exemplo para testar a interface.",
+      "A chave da OpenAI não foi aceita.",
+      "Não foi possível analisar o croqui neste momento.",
+      "A análise não retornou dados estruturados.",
+    ]);
     const message =
-      error instanceof Error ? error.message : "Não foi possível analisar o PDF.";
+      error instanceof Error && safeMessages.has(error.message)
+        ? error.message
+        : "Não foi possível analisar o PDF.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -34,7 +34,8 @@ export async function POST(request: Request) {
         "Cache-Control": "no-store",
       },
     });
-  } catch {
+  } catch (error) {
+    console.error("Falha ao gerar o PDF de informações topográficas:", error);
     return NextResponse.json(
       { error: "Não foi possível gerar o PDF." },
       { status: 500 },
