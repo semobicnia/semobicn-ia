@@ -116,10 +116,20 @@ export async function getReferenceData(): Promise<ReferenceData> {
           registration: string;
         }[]
       >`
-        select id, full_name, role, sex_code, registration
-        from municipal_staff
-        where active
-        order by role, sort_order, full_name
+        select staff.id, staff.full_name, staff.role, staff.sex_code, staff.registration
+        from municipal_staff staff
+        where staff.active
+          and (
+            staff.app_user_id is not null
+            or not exists (
+              select 1
+              from municipal_staff managed
+              where managed.role = staff.role
+                and managed.app_user_id is not null
+                and managed.active
+            )
+          )
+        order by staff.role, staff.sort_order, staff.full_name
       `,
     ]);
 

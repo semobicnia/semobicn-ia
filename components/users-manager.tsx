@@ -3,6 +3,7 @@
 import { Check, Pencil, Plus, ShieldCheck, UserX, X } from "lucide-react";
 import { useState } from "react";
 import type { ManagedUser, UserRole } from "@/lib/users";
+import type { SexCode, StaffRole } from "@/lib/topographic";
 
 const roleLabels: Record<UserRole, string> = {
   admin: "Administrador",
@@ -10,16 +11,33 @@ const roleLabels: Record<UserRole, string> = {
   reviewer: "Revisor",
 };
 
+const professionalRoleLabels: Record<StaffRole, string> = {
+  technical_responsible: "Responsável Técnico",
+  works_inspector: "Fiscal de Obras",
+};
+
+const sexLabels: Record<SexCode, string> = {
+  female: "Feminino",
+  male: "Masculino",
+  not_informed: "Não informado",
+};
+
 type Draft = {
   fullName: string;
   email: string;
   role: UserRole;
+  professionalRole: StaffRole | null;
+  sex: SexCode;
+  registration: string;
 };
 
 const emptyDraft: Draft = {
   fullName: "",
   email: "",
   role: "operator",
+  professionalRole: null,
+  sex: "not_informed",
+  registration: "",
 };
 
 export function UsersManager({
@@ -34,6 +52,10 @@ export function UsersManager({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [editingRole, setEditingRole] = useState<UserRole>("operator");
+  const [editingProfessionalRole, setEditingProfessionalRole] =
+    useState<StaffRole | null>(null);
+  const [editingSex, setEditingSex] = useState<SexCode>("not_informed");
+  const [editingRegistration, setEditingRegistration] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -72,7 +94,14 @@ export function UsersManager({
 
   async function updateUser(
     user: ManagedUser,
-    changes: { fullName: string; role: UserRole; active: boolean },
+    changes: {
+      fullName: string;
+      role: UserRole;
+      active: boolean;
+      professionalRole: StaffRole | null;
+      sex: SexCode;
+      registration: string;
+    },
   ) {
     setLoading(true);
     setError("");
@@ -110,6 +139,9 @@ export function UsersManager({
     setEditingId(user.id);
     setEditingName(user.fullName);
     setEditingRole(user.role);
+    setEditingProfessionalRole(user.professionalRole);
+    setEditingSex(user.sex);
+    setEditingRegistration(user.registration);
     setError("");
     setMessage("");
   }
@@ -168,6 +200,68 @@ export function UsersManager({
               ))}
             </select>
           </label>
+          <label className="field">
+            <span>Cargo funcional</span>
+            <select
+              value={draft.professionalRole || ""}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  professionalRole:
+                    (event.target.value as StaffRole) || null,
+                  registration:
+                    event.target.value ? current.registration : "",
+                }))
+              }
+            >
+              <option value="">Sem cargo na assinatura</option>
+              {Object.entries(professionalRoleLabels).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+          {draft.professionalRole && (
+            <>
+              <label className="field">
+                <span>Sexo</span>
+                <select
+                  value={draft.sex}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      sex: event.target.value as SexCode,
+                    }))
+                  }
+                >
+                  {Object.entries(sexLabels).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>
+                  {draft.professionalRole === "technical_responsible"
+                    ? "Registro profissional"
+                    : "Matrícula"}
+                </span>
+                <input
+                  required
+                  placeholder={
+                    draft.professionalRole === "technical_responsible"
+                      ? "Ex.: CREA/CFT 123456"
+                      : "Ex.: Mat. 110351"
+                  }
+                  value={draft.registration}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      registration: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </>
+          )}
           <button className="button primary" disabled={loading}>
             <Plus size={17} />
             Autorizar acesso
@@ -204,6 +298,58 @@ export function UsersManager({
                     <strong>{user.fullName}</strong>
                   )}
                   <small>{user.email}</small>
+                  {editing ? (
+                    <div className="user-professional-edit">
+                      <select
+                        aria-label="Cargo funcional"
+                        value={editingProfessionalRole || ""}
+                        onChange={(event) => {
+                          const value =
+                            (event.target.value as StaffRole) || null;
+                          setEditingProfessionalRole(value);
+                          if (!value) setEditingRegistration("");
+                        }}
+                      >
+                        <option value="">Sem cargo na assinatura</option>
+                        {Object.entries(professionalRoleLabels).map(
+                          ([value, label]) => (
+                            <option key={value} value={value}>{label}</option>
+                          ),
+                        )}
+                      </select>
+                      {editingProfessionalRole && (
+                        <>
+                          <select
+                            aria-label="Sexo"
+                            value={editingSex}
+                            onChange={(event) =>
+                              setEditingSex(event.target.value as SexCode)
+                            }
+                          >
+                            {Object.entries(sexLabels).map(([value, label]) => (
+                              <option key={value} value={value}>{label}</option>
+                            ))}
+                          </select>
+                          <input
+                            aria-label="Matrícula ou registro profissional"
+                            placeholder="Matrícula ou registro"
+                            value={editingRegistration}
+                            onChange={(event) =>
+                              setEditingRegistration(event.target.value)
+                            }
+                          />
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <small className="professional-badge">
+                      {user.professionalRole
+                        ? `${professionalRoleLabels[user.professionalRole]} · ${
+                            user.registration
+                          }`
+                        : "Sem cargo na assinatura"}
+                    </small>
+                  )}
                 </div>
                 <div className="user-role">
                   {editing ? (
@@ -234,6 +380,9 @@ export function UsersManager({
                             fullName: editingName,
                             role: editingRole,
                             active: user.active,
+                            professionalRole: editingProfessionalRole,
+                            sex: editingSex,
+                            registration: editingRegistration,
                           })
                         }
                         type="button"
@@ -270,6 +419,9 @@ export function UsersManager({
                             fullName: user.fullName,
                             role: user.role,
                             active: !user.active,
+                            professionalRole: user.professionalRole,
+                            sex: user.sex,
+                            registration: user.registration,
                           })
                         }
                         type="button"

@@ -1586,6 +1586,19 @@ button:disabled {
   font-size: 9px;
 }
 
+.user-details .professional-badge {
+  color: #356882;
+  font-weight: 700;
+}
+
+.user-professional-edit {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1.3fr 0.8fr 1.2fr;
+  gap: 6px;
+  margin-top: 8px;
+}
+
 .user-role > span {
   color: #40566c;
   font-size: 11px;
@@ -1837,6 +1850,10 @@ button:disabled {
 
   .user-role {
     grid-column: 2;
+  }
+
+  .user-professional-edit {
+    grid-template-columns: 1fr;
   }
 
   .user-actions {

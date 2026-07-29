@@ -47,6 +47,7 @@ set
 
 create table if not exists municipal_staff (
   id uuid primary key default gen_random_uuid(),
+  app_user_id uuid references app_users (id) on delete cascade,
   full_name text not null,
   role text not null,
   sex_code text not null references sex_options (code),
@@ -59,7 +60,16 @@ create table if not exists municipal_staff (
     check (role in ('technical_responsible', 'works_inspector'))
 );
 
-create unique index if not exists municipal_staff_role_name_idx
+alter table municipal_staff
+  add column if not exists app_user_id uuid
+    references app_users (id) on delete cascade;
+
+create unique index if not exists municipal_staff_app_user_idx
+  on municipal_staff (app_user_id);
+
+drop index if exists municipal_staff_role_name_idx;
+
+create index if not exists municipal_staff_role_name_idx
   on municipal_staff (role, full_name);
 
 insert into municipal_staff (

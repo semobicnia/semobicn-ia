@@ -27,7 +27,8 @@ export default async function UsersPage() {
             <p className="eyebrow">Administração</p>
             <h1>Usuários e permissões</h1>
             <p>
-              Autorize servidores e controle o perfil de acesso de cada conta.
+              Autorize servidores, defina o perfil de acesso e os cargos usados
+              nas assinaturas.
             </p>
           </div>
         </section>
