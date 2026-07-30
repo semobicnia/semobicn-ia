@@ -68,10 +68,10 @@ function scaledVertices(vertices: PlotVertex[]) {
   const maxY = Math.max(...vertices.map((point) => point.y));
   const width = Math.max(maxX - minX, 1);
   const height = Math.max(maxY - minY, 1);
-  const scale = Math.min(220 / width, 160 / height);
+  const scale = Math.min(220 / width, 145 / height);
   return vertices.map((point) => ({
-    x: 50 + (point.x - minX) * scale + (220 - width * scale) / 2,
-    y: 38 + (point.y - minY) * scale + (160 - height * scale) / 2,
+    x: 42 + (point.x - minX) * scale + (220 - width * scale) / 2,
+    y: 63 + (point.y - minY) * scale + (145 - height * scale) / 2,
   }));
 }
 
@@ -142,6 +142,16 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
     }
   });
   plotPath += " Z";
+  const distanceRows = points.map((_, index) => ({
+    from: index,
+    to: (index + 1) % points.length,
+    edge: edgeFor(index),
+  }));
+  const tableX = 286;
+  const tableY = 10;
+  const tableWidth = 106;
+  const tableRowHeight = 14;
+  const tableHeight = 8 + distanceRows.length * tableRowHeight;
 
   return (
     <div className="test-sketch">
@@ -153,7 +163,7 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
         </span>
       </div>
       <svg
-        viewBox="0 0 320 245"
+        viewBox="0 0 400 260"
         role="img"
         aria-label={`Representação aproximada do terreno em formato ${shapeLabels[geometry.shapeType]}`}
       >
@@ -167,7 +177,7 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
             <circle cx="2" cy="2" r="0.7" fill="#7c858b" />
           </pattern>
         </defs>
-        <rect width="320" height="245" rx="10" fill="#fbfcfd" />
+        <rect width="400" height="260" rx="10" fill="#fbfcfd" />
         {geometry.edges
           .filter(
             (edge) =>
@@ -273,13 +283,31 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
           strokeLinejoin="round"
         />
         {points.map((point, index) => (
-          <circle
-            key={`plot-point-${index}`}
-            cx={point.x}
-            cy={point.y}
-            r="3.2"
-            fill="#111"
-          />
+          <g key={`plot-point-${index}`}>
+            <circle cx={point.x} cy={point.y} r="3.2" fill="#111" />
+            {(() => {
+              const awayX = point.x - centroid.x;
+              const awayY = point.y - centroid.y;
+              const awayLength = Math.max(Math.hypot(awayX, awayY), 1);
+              const labelX = point.x + (awayX / awayLength) * 10;
+              const labelY = point.y + (awayY / awayLength) * 10;
+              return (
+                <text
+                  x={labelX}
+                  y={labelY}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize="7.5"
+                  fontWeight="800"
+                  paintOrder="stroke"
+                  stroke="white"
+                  strokeWidth="2.5"
+                >
+                  P{index + 1}
+                </text>
+              );
+            })()}
+          </g>
         ))}
         {geometry.edges.map((edge, index) => {
           const start = points[edge.fromVertex];
@@ -345,6 +373,49 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
             </g>
           );
         })}
+        <g aria-label="Tabela de distâncias entre vértices">
+          <rect
+            x={tableX}
+            y={tableY}
+            width={tableWidth}
+            height={tableHeight}
+            rx="2"
+            fill="white"
+            fillOpacity="0.96"
+            stroke="#30383d"
+            strokeWidth="0.7"
+          />
+          {distanceRows.map((row, index) => {
+            const rowY = tableY + 8 + index * tableRowHeight;
+            return (
+              <g key={`distance-row-${row.from}-${row.to}`}>
+                {index > 0 && (
+                  <line
+                    x1={tableX}
+                    y1={rowY}
+                    x2={tableX + tableWidth}
+                    y2={rowY}
+                    stroke="#7d858a"
+                    strokeWidth="0.45"
+                  />
+                )}
+                <text
+                  x={tableX + 6}
+                  y={rowY + 9.5}
+                  fontSize="7"
+                  fontWeight="700"
+                >
+                  {`P${row.from + 1} - P${row.to + 1} = ${
+                    row.edge?.measurement === null ||
+                    row.edge?.measurement === undefined
+                      ? "—"
+                      : `${formatMeasurement(row.edge.measurement)} m`
+                  }`}
+                </text>
+              </g>
+            );
+          })}
+        </g>
       </svg>
       <small>
         Reconstrução aproximada para revisão; ruas e curvas seguem a leitura do
