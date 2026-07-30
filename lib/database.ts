@@ -8,6 +8,7 @@ import {
   defaultMunicipalSecretary,
   defaultTechnicalResponsible,
   defaultWorksInspector,
+  normalizeTopographicData,
   type MunicipalSecretary,
   type SexCode,
   type SexOption,
@@ -696,7 +697,7 @@ export async function getProcessDetail(input: {
       createdByEmail: row.created_by_email || "",
       createdAt: iso(row.created_at),
       updatedAt: iso(row.updated_at),
-      data: row.extracted_data,
+      data: normalizeTopographicData(row.extracted_data),
       supplementaryMessage: row.supplementary_message || "",
       sourceAvailable: Boolean(row.source_public_id),
       events: eventRows.map((event) => ({
