@@ -892,30 +892,30 @@ export function CroquiWorkspace({
             <rect x="10" y="748" width="286" height="63" rx="7" fill="white" stroke="#111" />
             <line
               x1="153"
-              y1="756"
+              y1="755"
               x2="153"
-              y2="804"
+              y2="806"
               stroke="#c7ccd0"
               strokeWidth="0.8"
             />
-            <line x1="27" y1="772" x2="136" y2="772" stroke="#444" strokeWidth="0.8" />
-            <line x1="170" y1="772" x2="279" y2="772" stroke="#444" strokeWidth="0.8" />
-            <text x="81.5" y="783" textAnchor="middle" fontSize="6.5">
+            <line x1="27" y1="780" x2="136" y2="780" stroke="#444" strokeWidth="0.8" />
+            <line x1="170" y1="780" x2="279" y2="780" stroke="#444" strokeWidth="0.8" />
+            <text x="81.5" y="788" textAnchor="middle" fontSize="6.2">
               {municipalSecretary.fullName.slice(0, 34)}
             </text>
-            <text x="81.5" y="792" textAnchor="middle" fontSize="5.8">
+            <text x="81.5" y="796" textAnchor="middle" fontSize="5.4">
               {municipalSecretary.title}
             </text>
-            <text x="81.5" y="802" textAnchor="middle" fontSize="5.8">
+            <text x="81.5" y="805" textAnchor="middle" fontSize="5.4">
               {municipalSecretary.appointment}
             </text>
-            <text x="224.5" y="783" textAnchor="middle" fontSize="6.5">
+            <text x="224.5" y="788" textAnchor="middle" fontSize="6.2">
               {data.technicalResponsible.fullName.slice(0, 34)}
             </text>
-            <text x="224.5" y="792" textAnchor="middle" fontSize="5.8">
+            <text x="224.5" y="796" textAnchor="middle" fontSize="5.4">
               Responsável Técnico
             </text>
-            <text x="224.5" y="802" textAnchor="middle" fontSize="5.8">
+            <text x="224.5" y="805" textAnchor="middle" fontSize="5.4">
               {data.technicalResponsible.registration || ""}
             </text>
 
@@ -965,7 +965,7 @@ export function CroquiWorkspace({
             <rect x="300" y="815" width="168" height="19" rx="5" fill="white" stroke="#111" />
             <text x="307" y="823" fontSize="5.2" fontWeight="700">DESENHO:</text>
             <text x="384" y="831" textAnchor="middle" fontSize="6.6">
-              {data.technicalResponsible.fullName.slice(0, 36).toUpperCase() || "-"}
+              {currentUser.name.slice(0, 36).toUpperCase() || "-"}
             </text>
           </svg>
         </section>
