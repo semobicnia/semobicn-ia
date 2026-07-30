@@ -47,6 +47,8 @@ O esquema cria:
 - `sex_options`: opções Feminino, Masculino e Não informado;
 - `municipal_staff`: responsáveis técnicos e fiscais de obras, com sexo,
   registro e situação ativa;
+- `municipal_secretaries`: secretário municipal padrão aplicado
+  automaticamente aos croquis, sem seleção manual;
 - `topographic_processes`: processos analisados, incluindo o sexo do posseiro
   e os servidores escolhidos para assinar o documento.
 

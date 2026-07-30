@@ -6,6 +6,7 @@ export type UrbanSketchSettings = {
   inclination: number;
   bci: string;
   sketchNumber: string;
+  claimantDocument: string;
   showBuilding: boolean;
   approximationNotice: boolean;
   vertexOffsets: [
@@ -29,6 +30,7 @@ export const defaultUrbanSketchSettings: UrbanSketchSettings = {
   inclination: 8,
   bci: "",
   sketchNumber: "001",
+  claimantDocument: "",
   showBuilding: true,
   approximationNotice: true,
   vertexOffsets: emptyVertexOffsets,

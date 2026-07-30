@@ -5,8 +5,10 @@ import {
 } from "./croqui";
 import {
   defaultSexOptions,
+  defaultMunicipalSecretary,
   defaultTechnicalResponsible,
   defaultWorksInspector,
+  type MunicipalSecretary,
   type SexCode,
   type SexOption,
   type StaffMember,
@@ -163,6 +165,40 @@ export async function getReferenceData(): Promise<ReferenceData> {
             }))
           : fallbackReferenceData().staff,
     };
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function getDefaultMunicipalSecretary(): Promise<MunicipalSecretary> {
+  const sql = createDatabaseClient();
+  if (!sql) return { ...defaultMunicipalSecretary };
+
+  try {
+    const [row] = await sql<
+      {
+        id: string;
+        full_name: string;
+        office_title: string;
+        appointment: string;
+      }[]
+    >`
+      select id, full_name, office_title, appointment
+      from municipal_secretaries
+      where active
+      order by is_default desc, updated_at desc
+      limit 1
+    `;
+    return row
+      ? {
+          id: row.id,
+          fullName: row.full_name,
+          title: row.office_title,
+          appointment: row.appointment,
+        }
+      : { ...defaultMunicipalSecretary };
+  } catch {
+    return { ...defaultMunicipalSecretary };
   } finally {
     await sql.end();
   }

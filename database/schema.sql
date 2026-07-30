@@ -101,6 +101,41 @@ set
   active = true,
   updated_at = now();
 
+create table if not exists municipal_secretaries (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null unique,
+  office_title text not null,
+  appointment text not null,
+  is_default boolean not null default false,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists municipal_secretaries_default_idx
+  on municipal_secretaries (is_default)
+  where is_default and active;
+
+insert into municipal_secretaries (
+  full_name,
+  office_title,
+  appointment,
+  is_default
+)
+values (
+  'Antonio Lustosa de Melo',
+  'Sec. Mul de Obras e Infraestrutura',
+  'Portaria: 029/2026-CC',
+  true
+)
+on conflict (full_name) do update
+set
+  office_title = excluded.office_title,
+  appointment = excluded.appointment,
+  is_default = true,
+  active = true,
+  updated_at = now();
+
 create table if not exists topographic_processes (
   id uuid primary key default gen_random_uuid(),
   status text not null default 'review',

@@ -27,12 +27,16 @@ import {
   getSketchMeasurements,
   type UrbanSketchSettings,
 } from "@/lib/croqui";
-import type { TopographicData } from "@/lib/topographic";
+import type {
+  MunicipalSecretary,
+  TopographicData,
+} from "@/lib/topographic";
 
 type Props = {
   currentUser: HeaderUser;
   processId?: string;
   data: TopographicData;
+  municipalSecretary: MunicipalSecretary;
   initialSettings?: UrbanSketchSettings | null;
   initialLocationImageUrl?: string;
 };
@@ -133,12 +137,15 @@ export function CroquiWorkspace({
   currentUser,
   processId,
   data,
+  municipalSecretary,
   initialSettings,
   initialLocationImageUrl,
 }: Props) {
-  const [settings, setSettings] = useState<UrbanSketchSettings>(
-    initialSettings ?? defaultUrbanSketchSettings,
-  );
+  const [settings, setSettings] = useState<UrbanSketchSettings>(() => ({
+    ...defaultUrbanSketchSettings,
+    ...initialSettings,
+    claimantDocument: initialSettings?.claimantDocument || data.cpf,
+  }));
   const [locationImage, setLocationImage] = useState<string | null>(null);
   const [semobiLogo, setSemobiLogo] = useState<string | null>(null);
   const [prefeituraLogo, setPrefeituraLogo] = useState<string | null>(null);
@@ -509,6 +516,16 @@ export function CroquiWorkspace({
               />
             </label>
           </div>
+          <label className="field">
+            <span>CPF/CNPJ do posseiro</span>
+            <input
+              value={settings.claimantDocument}
+              onChange={(event) =>
+                updateSetting("claimantDocument", event.target.value)
+              }
+              placeholder="Ex.: 000.000.000-00"
+            />
+          </label>
 
           <label className="check-row">
             <input
@@ -596,7 +613,12 @@ export function CroquiWorkspace({
             </button>
             <button
               className="button ghost"
-              onClick={() => setSettings(defaultUrbanSketchSettings)}
+              onClick={() =>
+                setSettings({
+                  ...defaultUrbanSketchSettings,
+                  claimantDocument: data.cpf,
+                })
+              }
               type="button"
             >
               <RotateCcw size={16} />
@@ -813,7 +835,7 @@ export function CroquiWorkspace({
               ))}
 
             {settings.approximationNotice && (
-              <text x="298" y="660" textAnchor="middle" fontSize="5.5" fill="#606b72">
+              <text x="298" y="648" textAnchor="middle" fontSize="5.2" fill="#606b72">
                 REPRESENTAÇÃO GRÁFICA APROXIMADA COM BASE NAS MEDIDAS INFORMADAS
               </text>
             )}
@@ -822,7 +844,7 @@ export function CroquiWorkspace({
               <image
                 href={semobiLogo}
                 x="244"
-                y="610"
+                y="600"
                 width="108"
                 height="31"
                 preserveAspectRatio="xMidYMid meet"
@@ -830,7 +852,7 @@ export function CroquiWorkspace({
             ) : (
               <text
                 x="298"
-                y="635"
+                y="625"
                 textAnchor="middle"
                 fontSize="22"
                 fontWeight="900"
@@ -839,91 +861,110 @@ export function CroquiWorkspace({
                 SEMOBI
               </text>
             )}
-            <text x="298" y="650" textAnchor="middle" fontSize="8.5" fontWeight="700">
+            <text x="298" y="640" textAnchor="middle" fontSize="8.5" fontWeight="700">
               Secretaria Municipal de Obras e Infraestrutura
             </text>
 
-            <rect x="10" y="665" width="575" height="27" rx="8" fill="white" stroke="#111" />
-            <text x="297.5" y="684" textAnchor="middle" fontSize="14" fontWeight="800">
+            <rect x="10" y="652" width="575" height="27" rx="8" fill="white" stroke="#111" />
+            <text x="297.5" y="671" textAnchor="middle" fontSize="14" fontWeight="800">
               PLANTA DE LOCALIZAÇÃO DE TERRENO
             </text>
 
-            <rect x="10" y="696" width="575" height="60" rx="8" fill="white" stroke="#111" />
-            <text x="18" y="713" fontSize="8" fontWeight="700">POSSEIRO(A):</text>
-            <text x="80" y="713" fontSize="8.5" fontWeight="800">{claimant.slice(0, 68)}</text>
-            <text x="18" y="731" fontSize="8">
+            <rect x="10" y="683" width="575" height="61" rx="8" fill="white" stroke="#111" />
+            <text x="18" y="700" fontSize="8.2">
+              <tspan fontWeight="800">POSSEIRO:</tspan>
+              <tspan dx="5" fontWeight="800">{claimant.slice(0, 52)}</tspan>
+              <tspan dx="8" fontWeight="800">CPF/CNPJ:</tspan>
+              <tspan dx="4">{settings.claimantDocument || "NÃO INFORMADO"}</tspan>
+            </text>
+            <text x="18" y="718" fontSize="8">
               <tspan fontWeight="700">BCI:</tspan> {settings.bci || "-"}
               <tspan dx="35" fontWeight="700">QUADRA:</tspan> {data.block || "-"}
               <tspan dx="35" fontWeight="700">LOTE:</tspan> {data.lot || "-"}
             </text>
             {addressLines.map((line, index) => (
-              <text key={line} x="18" y={746 + index * 8} fontSize="7.5">
+              <text key={line} x="18" y={734 + index * 8} fontSize="7.5">
                 {index === 0 ? "LOCALIZADO NA: " : ""}
                 {line.toUpperCase()}
               </text>
             ))}
 
-            <rect x="10" y="759" width="281" height="43" rx="7" fill="white" stroke="#111" />
-            <line x1="150.5" y1="759" x2="150.5" y2="802" stroke="#111" />
-            <text x="80" y="773" textAnchor="middle" fontSize="7" fontWeight="700">
-              {data.worksInspector.fullName.slice(0, 30).toUpperCase() || "-"}
+            <rect x="10" y="748" width="286" height="63" rx="7" fill="white" stroke="#111" />
+            <line
+              x1="153"
+              y1="756"
+              x2="153"
+              y2="804"
+              stroke="#c7ccd0"
+              strokeWidth="0.8"
+            />
+            <line x1="27" y1="772" x2="136" y2="772" stroke="#444" strokeWidth="0.8" />
+            <line x1="170" y1="772" x2="279" y2="772" stroke="#444" strokeWidth="0.8" />
+            <text x="81.5" y="783" textAnchor="middle" fontSize="6.5">
+              {municipalSecretary.fullName.slice(0, 34)}
             </text>
-            <text x="80" y="784" textAnchor="middle" fontSize="5.8">FISCAL DE OBRAS</text>
-            <text x="80" y="795" textAnchor="middle" fontSize="5.8">
-              {data.worksInspector.registration || ""}
+            <text x="81.5" y="792" textAnchor="middle" fontSize="5.8">
+              {municipalSecretary.title}
             </text>
-            <text x="221" y="773" textAnchor="middle" fontSize="7" fontWeight="700">
-              {data.technicalResponsible.fullName.slice(0, 30).toUpperCase() || "-"}
+            <text x="81.5" y="802" textAnchor="middle" fontSize="5.8">
+              {municipalSecretary.appointment}
             </text>
-            <text x="221" y="784" textAnchor="middle" fontSize="5.8">RESPONSÁVEL TÉCNICO</text>
-            <text x="221" y="795" textAnchor="middle" fontSize="5.8">
+            <text x="224.5" y="783" textAnchor="middle" fontSize="6.5">
+              {data.technicalResponsible.fullName.slice(0, 34)}
+            </text>
+            <text x="224.5" y="792" textAnchor="middle" fontSize="5.8">
+              Responsável Técnico
+            </text>
+            <text x="224.5" y="802" textAnchor="middle" fontSize="5.8">
               {data.technicalResponsible.registration || ""}
             </text>
 
-            <rect x="295" y="759" width="172" height="43" rx="7" fill="white" stroke="#111" />
+            <rect x="300" y="748" width="168" height="63" rx="7" fill="white" stroke="#111" />
             {prefeituraLogo ? (
               <image
                 href={prefeituraLogo}
-                x="329"
-                y="762"
-                width="104"
+                x="331"
+                y="750"
+                width="106"
                 height="27"
                 preserveAspectRatio="xMidYMid meet"
               />
             ) : (
-              <text x="381" y="781" textAnchor="middle" fontSize="11" fontWeight="900" fill="#0874bd">
+              <text x="384" y="769" textAnchor="middle" fontSize="11" fontWeight="900" fill="#0874bd">
                 COELHO NETO
               </text>
             )}
-            <text x="381" y="797" textAnchor="middle" fontSize="6">
-              PREFEITURA MUNICIPAL DE COELHO NETO - MA
+            <text x="309" y="789" fontSize="6.8" fontWeight="800">
+              MUNICÍPIO / UF:
+            </text>
+            <text x="384" y="803" textAnchor="middle" fontSize="9">
+              COELHO NETO / MARANHÃO
             </text>
 
-            <rect x="471" y="759" width="114" height="73" rx="7" fill="white" stroke="#111" />
-            <text x="528" y="774" textAnchor="middle" fontSize="6" fontWeight="700">ÁREA DO TERRENO</text>
-            <text x="528" y="789" textAnchor="middle" fontSize="10" fontWeight="800">
+            <rect x="472" y="748" width="113" height="86" rx="7" fill="white" stroke="#111" />
+            <text x="480" y="761" fontSize="6.3">ÁREA DO TERRENO:</text>
+            <text x="528.5" y="781" textAnchor="middle" fontSize="12" fontWeight="800">
               {formatMeasurement(data.landArea)} m²
             </text>
-            <line x1="471" y1="797" x2="585" y2="797" stroke="#111" />
-            <text x="528" y="809" textAnchor="middle" fontSize="6" fontWeight="700">ÁREA CONSTRUÍDA</text>
-            <text x="528" y="824" textAnchor="middle" fontSize="10" fontWeight="800">
+            <text x="480" y="800" fontSize="6.3">ÁREA DA CONSTRUÇÃO:</text>
+            <text x="528.5" y="824" textAnchor="middle" fontSize="12" fontWeight="800">
               {formatMeasurement(data.builtArea || 0)} m²
             </text>
 
-            <rect x="10" y="806" width="91" height="26" rx="6" fill="white" stroke="#111" />
-            <text x="55.5" y="816" textAnchor="middle" fontSize="5.5" fontWeight="700">DATA</text>
-            <text x="55.5" y="827" textAnchor="middle" fontSize="7.5">
+            <rect x="10" y="815" width="91" height="19" rx="5" fill="white" stroke="#111" />
+            <text x="17" y="823" fontSize="5.2" fontWeight="700">DATA:</text>
+            <text x="55.5" y="831" textAnchor="middle" fontSize="6.8">
               {formatDocumentDate(data.documentDate)}
             </text>
-            <rect x="105" y="806" width="91" height="26" rx="6" fill="white" stroke="#111" />
-            <text x="150.5" y="816" textAnchor="middle" fontSize="5.5" fontWeight="700">CROQUI Nº</text>
-            <text x="150.5" y="827" textAnchor="middle" fontSize="7.5">{settings.sketchNumber || "001"}</text>
-            <rect x="200" y="806" width="91" height="26" rx="6" fill="white" stroke="#111" />
-            <text x="245.5" y="816" textAnchor="middle" fontSize="5.5" fontWeight="700">ESCALA</text>
-            <text x="245.5" y="827" textAnchor="middle" fontSize="7.5">{settings.scale}</text>
-            <rect x="295" y="806" width="172" height="26" rx="6" fill="white" stroke="#111" />
-            <text x="381" y="816" textAnchor="middle" fontSize="5.5" fontWeight="700">DESENHO</text>
-            <text x="381" y="827" textAnchor="middle" fontSize="7.2">
+            <rect x="105" y="815" width="91" height="19" rx="5" fill="white" stroke="#111" />
+            <text x="112" y="823" fontSize="5.2" fontWeight="700">NÚMERO DO CROQUI:</text>
+            <text x="150.5" y="831" textAnchor="middle" fontSize="6.8">{settings.sketchNumber || "001"}</text>
+            <rect x="200" y="815" width="96" height="19" rx="5" fill="white" stroke="#111" />
+            <text x="207" y="823" fontSize="5.2" fontWeight="700">ESCALA:</text>
+            <text x="248" y="831" textAnchor="middle" fontSize="6.8">{settings.scale}</text>
+            <rect x="300" y="815" width="168" height="19" rx="5" fill="white" stroke="#111" />
+            <text x="307" y="823" fontSize="5.2" fontWeight="700">DESENHO:</text>
+            <text x="384" y="831" textAnchor="middle" fontSize="6.6">
               {data.technicalResponsible.fullName.slice(0, 36).toUpperCase() || "-"}
             </text>
           </svg>

@@ -15,6 +15,13 @@ export type StaffMember = {
   registration: string;
 };
 
+export type MunicipalSecretary = {
+  id: string | null;
+  fullName: string;
+  title: string;
+  appointment: string;
+};
+
 export type Boundary = {
   side: BoundarySide;
   label: string;
@@ -69,6 +76,13 @@ export const defaultWorksInspector: StaffMember = {
   role: "works_inspector",
   sex: "male",
   registration: "Mat. 110351",
+};
+
+export const defaultMunicipalSecretary: MunicipalSecretary = {
+  id: null,
+  fullName: "Antonio Lustosa de Melo",
+  title: "Sec. Mul de Obras e Infraestrutura",
+  appointment: "Portaria: 029/2026-CC",
 };
 
 export const boundaryLabels: Record<BoundarySide, string> = {

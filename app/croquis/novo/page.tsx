@@ -1,7 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import { CroquiWorkspace } from "@/components/croqui-workspace";
 import { getAuthenticatedSession } from "@/lib/auth";
-import { getProcessDetail, getUrbanSketch } from "@/lib/database";
+import {
+  getDefaultMunicipalSecretary,
+  getProcessDetail,
+  getUrbanSketch,
+} from "@/lib/database";
 import { sampleTopographicData } from "@/lib/topographic";
 
 const uuidPattern =
@@ -15,6 +19,7 @@ export default async function NewUrbanSketchPage({
   const session = await getAuthenticatedSession();
   if (!session || !session.user.role) redirect("/entrar");
   const { processo, demonstracao } = await searchParams;
+  const municipalSecretary = await getDefaultMunicipalSecretary();
   if (demonstracao === "1") {
     return (
       <CroquiWorkspace
@@ -24,6 +29,7 @@ export default async function NewUrbanSketchPage({
           role: session.user.role,
         }}
         data={sampleTopographicData}
+        municipalSecretary={municipalSecretary}
       />
     );
   }
@@ -46,6 +52,7 @@ export default async function NewUrbanSketchPage({
       }}
       processId={process.id}
       data={process.data}
+      municipalSecretary={municipalSecretary}
       initialSettings={sketch?.settings}
       initialLocationImageUrl={
         sketch?.locationImageAvailable
