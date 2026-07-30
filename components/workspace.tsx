@@ -40,6 +40,7 @@ import {
 type Step = "upload" | "review" | "document";
 
 const MAX_SOURCE_FILE_SIZE_BYTES = 10_485_760;
+const FUNCTION_SAFE_FILE_SIZE_BYTES = 3_800_000;
 
 async function readApiResponse<T>(
   response: Response,
@@ -60,6 +61,53 @@ async function readApiResponse<T>(
     );
   }
   throw new Error(fallbackMessage);
+}
+
+async function compressImageForFunction(file: File): Promise<File> {
+  if (file.size <= FUNCTION_SAFE_FILE_SIZE_BYTES) return file;
+
+  const bitmap = await createImageBitmap(file);
+  const attempts = [
+    { maxDimension: 2800, quality: 0.88 },
+    { maxDimension: 2400, quality: 0.82 },
+    { maxDimension: 2100, quality: 0.76 },
+    { maxDimension: 1800, quality: 0.7 },
+  ];
+
+  try {
+    for (const attempt of attempts) {
+      const scale = Math.min(
+        1,
+        attempt.maxDimension / Math.max(bitmap.width, bitmap.height),
+      );
+      const width = Math.max(1, Math.round(bitmap.width * scale));
+      const height = Math.max(1, Math.round(bitmap.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) break;
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, width, height);
+      context.drawImage(bitmap, 0, 0, width, height);
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", attempt.quality),
+      );
+      if (blob && blob.size <= FUNCTION_SAFE_FILE_SIZE_BYTES) {
+        const filename = file.name.replace(/\.[^.]+$/, "") || "desenho";
+        return new File([blob], `${filename}.jpg`, {
+          type: "image/jpeg",
+          lastModified: file.lastModified,
+        });
+      }
+    }
+  } finally {
+    bitmap.close();
+  }
+
+  throw new Error(
+    "Não foi possível reduzir esta imagem para o envio. Tente uma foto com até 10 MB em JPG, PNG ou WebP.",
+  );
 }
 
 const steps: Array<{ id: Step; label: string; hint: string }> = [
@@ -288,56 +336,77 @@ export function Workspace({
         signatureResponse,
         "Não foi possível preparar o envio do arquivo.",
       );
+
+      let response: Response;
       if (
-        !signatureResponse.ok ||
-        !signature.cloudName ||
-        !signature.apiKey ||
-        !signature.timestamp ||
-        !signature.publicId ||
-        !signature.type ||
-        !signature.signature
+        signatureResponse.ok &&
+        signature.cloudName &&
+        signature.apiKey &&
+        signature.timestamp &&
+        signature.publicId &&
+        signature.type &&
+        signature.signature
       ) {
+        const uploadBody = new FormData();
+        uploadBody.append("file", file);
+        uploadBody.append("api_key", signature.apiKey);
+        uploadBody.append("timestamp", signature.timestamp);
+        uploadBody.append("public_id", signature.publicId);
+        uploadBody.append("type", signature.type);
+        uploadBody.append("signature", signature.signature);
+        const uploadResponse = await fetch(
+          `https://api.cloudinary.com/v1_1/${encodeURIComponent(signature.cloudName)}/raw/upload`,
+          { method: "POST", body: uploadBody },
+        );
+        const uploaded = await readApiResponse<{
+          secure_url?: string;
+          public_id?: string;
+          error?: { message?: string };
+        }>(uploadResponse, "Não foi possível armazenar o arquivo enviado.");
+        if (!uploadResponse.ok || !uploaded.secure_url || !uploaded.public_id) {
+          throw new Error(
+            uploaded.error?.message ||
+              "Não foi possível armazenar o arquivo enviado.",
+          );
+        }
+
+        response = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.name,
+            mimeType: file.type,
+            supplementaryMessage,
+            source: {
+              url: uploaded.secure_url,
+              publicId: uploaded.public_id,
+            },
+          }),
+        });
+      } else if (signatureResponse.status === 503) {
+        if (file.type === "application/pdf") {
+          if (file.size > FUNCTION_SAFE_FILE_SIZE_BYTES) {
+            throw new Error(
+              "Este PDF é grande demais para o envio temporário. Reduza-o para menos de 3,8 MB ou configure o armazenamento de arquivos.",
+            );
+          }
+        }
+        const preparedFile = file.type.startsWith("image/")
+          ? await compressImageForFunction(file)
+          : file;
+        const fallbackBody = new FormData();
+        fallbackBody.append("file", preparedFile);
+        fallbackBody.append("supplementaryMessage", supplementaryMessage);
+        response = await fetch("/api/analyze", {
+          method: "POST",
+          body: fallbackBody,
+        });
+      } else {
         throw new Error(
           signature.error || "Não foi possível preparar o envio do arquivo.",
         );
       }
 
-      const uploadBody = new FormData();
-      uploadBody.append("file", file);
-      uploadBody.append("api_key", signature.apiKey);
-      uploadBody.append("timestamp", signature.timestamp);
-      uploadBody.append("public_id", signature.publicId);
-      uploadBody.append("type", signature.type);
-      uploadBody.append("signature", signature.signature);
-      const uploadResponse = await fetch(
-        `https://api.cloudinary.com/v1_1/${encodeURIComponent(signature.cloudName)}/raw/upload`,
-        { method: "POST", body: uploadBody },
-      );
-      const uploaded = await readApiResponse<{
-        secure_url?: string;
-        public_id?: string;
-        error?: { message?: string };
-      }>(uploadResponse, "Não foi possível armazenar o arquivo enviado.");
-      if (!uploadResponse.ok || !uploaded.secure_url || !uploaded.public_id) {
-        throw new Error(
-          uploaded.error?.message ||
-            "Não foi possível armazenar o arquivo enviado.",
-        );
-      }
-
-      const response = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          filename: file.name,
-          mimeType: file.type,
-          supplementaryMessage,
-          source: {
-            url: uploaded.secure_url,
-            publicId: uploaded.public_id,
-          },
-        }),
-      });
       const result = await readApiResponse<{
         data?: TopographicData;
         processId?: string | null;
