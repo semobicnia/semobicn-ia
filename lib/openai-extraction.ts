@@ -7,6 +7,7 @@ const schema = {
   type: "object",
   additionalProperties: false,
   properties: {
+    bci: { type: "string" },
     claimantName: { type: "string" },
     claimantSex: {
       type: "string",
@@ -49,6 +50,7 @@ const schema = {
     reviewNotes: { type: "array", items: { type: "string" } },
   },
   required: [
+    "bci",
     "claimantName",
     "claimantSex",
     "cpf",
@@ -109,6 +111,7 @@ Regras obrigatórias:
 - Associe cada nome de rua, vizinho e medida ao lado mais próximo do desenho. Confira vírgulas e pontos decimais e confronte as medidas com a área indicada.
 - Quando houver mais de uma leitura plausível, não escolha silenciosamente: use o valor mais legível e registre a alternativa ou a dúvida em reviewNotes para correção humana.
 - Não invente dados ilegíveis; use string vazia ou null e registre a dúvida em reviewNotes.
+- Extraia em bci o número do BCI, cadastro imobiliário ou inscrição imobiliária quando aparecer no desenho.
 - Extraia no campo cpf o CPF ou o CNPJ informado no croqui.
 - Para claimantSex, use female ou male somente quando o croqui ou a mensagem complementar indicarem claramente o sexo; caso contrário, use not_informed para revisão humana.
 - A nacionalidade padrão é "brasileira", exceto quando a mensagem complementar disser outra.
@@ -119,7 +122,7 @@ Regras obrigatórias:
 - Se a área construída estiver ausente, marcada com traço ou zero, use 0 e deixe builtAreaInWords vazio.
 - Escreva landAreaInWords e builtAreaInWords por extenso em português, incluindo "metros quadrados".
 - Escreva cada medida linear por extenso em measurementInWords, convertendo a parte decimal para centímetros.
-- Use a data que aparece no croqui, em YYYY-MM-DD.
+- Use a data que aparece no croqui, em YYYY-MM-DD. Quando não houver data, retorne string vazia; o sistema usará a data de criação.
 - Retorne exatamente quatro limites: front, right, left e back.
 
 Mensagem complementar fornecida pelo servidor:

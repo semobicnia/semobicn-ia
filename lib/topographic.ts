@@ -30,6 +30,7 @@ export type Boundary = {
 };
 
 export type TopographicData = {
+  bci: string;
   claimantName: string;
   claimantSex: SexCode;
   cpf: string;
@@ -55,6 +56,19 @@ export type TopographicData = {
   technicalResponsible: StaffMember;
   worksInspector: StaffMember;
 };
+
+function currentDocumentDate() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Fortaleza",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  return `${values.year}-${values.month}-${values.day}`;
+}
 
 export const defaultSexOptions: SexOption[] = [
   { code: "female", label: "Feminino" },
@@ -93,6 +107,7 @@ export const boundaryLabels: Record<BoundarySide, string> = {
 };
 
 export const initialTopographicData: TopographicData = {
+  bci: "",
   claimantName: "",
   claimantSex: "not_informed",
   cpf: "",
@@ -115,7 +130,7 @@ export const initialTopographicData: TopographicData = {
     "Iluminação pública",
     "Rede de abastecimento de água",
   ],
-  documentDate: new Date().toISOString().slice(0, 10),
+  documentDate: currentDocumentDate(),
   boundaries: [
     { side: "front", label: "", measurement: null, measurementInWords: "" },
     { side: "right", label: "", measurement: null, measurementInWords: "" },
@@ -134,6 +149,7 @@ export const initialTopographicData: TopographicData = {
 };
 
 export const sampleTopographicData: TopographicData = {
+  bci: "",
   claimantName: "MARIZA SILVA DOS SANTOS",
   claimantSex: "female",
   cpf: "070.609.013-61",
@@ -257,6 +273,9 @@ export function normalizeTopographicData(
 
   merged.nationality ||= "brasileira";
   merged.delimitation ||= "Muro de alvenaria";
+  merged.bci = merged.bci?.trim() || "";
+  merged.documentDate =
+    merged.documentDate?.trim() || currentDocumentDate();
   return merged;
 }
 

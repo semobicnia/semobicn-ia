@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedSession } from "@/lib/auth";
 import { saveUrbanSketch } from "@/lib/database";
-import type { UrbanSketchSettings } from "@/lib/croqui";
+import {
+  defaultUrbanSketchSettings,
+  type UrbanSketchSettings,
+} from "@/lib/croqui";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
@@ -67,23 +70,28 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
       processId?: string;
-      settings?: UrbanSketchSettings;
+      settings?: Partial<UrbanSketchSettings>;
       finalize?: boolean;
+    };
+    const settings: UrbanSketchSettings = {
+      ...defaultUrbanSketchSettings,
+      ...body.settings,
     };
     if (
       !body.processId ||
       !uuidPattern.test(body.processId) ||
       !body.settings ||
-      typeof body.settings.northAngle !== "number" ||
-      typeof body.settings.inclination !== "number" ||
-      typeof body.settings.scale !== "string" ||
-      typeof body.settings.bci !== "string" ||
-      typeof body.settings.sketchNumber !== "string" ||
-      typeof body.settings.claimantDocument !== "string" ||
-      !validDataOverrides(body.settings.dataOverrides) ||
-      typeof body.settings.showBuilding !== "boolean" ||
-      typeof body.settings.approximationNotice !== "boolean" ||
-      !validVertexOffsets(body.settings.vertexOffsets)
+      typeof settings.northAngle !== "number" ||
+      typeof settings.inclination !== "number" ||
+      typeof settings.scale !== "string" ||
+      typeof settings.bci !== "string" ||
+      typeof settings.sketchNumber !== "string" ||
+      typeof settings.claimantDocument !== "string" ||
+      (settings.dataOverrides !== undefined &&
+        !validDataOverrides(settings.dataOverrides)) ||
+      typeof settings.showBuilding !== "boolean" ||
+      typeof settings.approximationNotice !== "boolean" ||
+      !validVertexOffsets(settings.vertexOffsets)
     ) {
       return NextResponse.json({ error: "Dados do croqui inválidos." }, { status: 400 });
     }
@@ -92,7 +100,7 @@ export async function POST(request: Request) {
       processId: body.processId,
       userId: session.user.id,
       role: session.user.role,
-      settings: body.settings,
+      settings,
       status: body.finalize ? "finalized" : "review",
     });
     if (!saved) {

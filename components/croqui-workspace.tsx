@@ -205,6 +205,7 @@ export function CroquiWorkspace({
   const [settings, setSettings] = useState<UrbanSketchSettings>(() => ({
     ...defaultUrbanSketchSettings,
     ...initialSettings,
+    bci: initialSettings?.bci || data.bci,
     claimantDocument: initialSettings?.claimantDocument || data.cpf,
     dataOverrides: createSketchDataOverrides(
       data,
