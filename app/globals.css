@@ -1944,6 +1944,164 @@ button:disabled {
   box-shadow: 0 15px 42px rgb(20 39 55 / 20%);
 }
 
+.test-lab,
+.test-lab-setup,
+.test-results,
+.test-result-card {
+  display: grid;
+  gap: 18px;
+}
+
+.test-file-picker {
+  min-height: 135px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  padding: 22px;
+  border: 1.5px dashed #9fb4c8;
+  border-radius: 12px;
+  color: var(--blue);
+  background: #f7fbff;
+  text-align: center;
+  cursor: pointer;
+}
+
+.test-file-picker input {
+  display: none;
+}
+
+.test-file-picker span {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.test-lab-actions,
+.test-result-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.test-lab-actions > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.test-results {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr));
+}
+
+.test-result-card > header > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.test-result-card > header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.test-result-card > header small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.test-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: #5d6a76;
+  background: #edf1f4;
+  font-size: 9.5px;
+  font-weight: 800;
+}
+
+.test-status.completed {
+  color: var(--success);
+  background: #e8f6ef;
+}
+
+.test-status.running {
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.test-status.error {
+  color: #9b3732;
+  background: #fff0ef;
+}
+
+.test-data-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.test-data-grid > span,
+.test-boundaries > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fbfcfd;
+}
+
+.test-data-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.test-data-grid small,
+.test-boundaries small {
+  color: var(--muted);
+  font-size: 8.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.test-data-grid b,
+.test-boundaries b {
+  overflow-wrap: anywhere;
+  font-size: 10.5px;
+}
+
+.test-boundaries {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.test-boundaries em {
+  color: var(--blue);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.test-result-card footer {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.test-result-card footer > span {
+  font-weight: 800;
+}
+
+.test-result-card footer ul {
+  margin: 0;
+  padding-left: 17px;
+  line-height: 1.5;
+}
+
 @media (max-width: 980px) {
   .croqui-shell {
     grid-template-columns: 1fr;

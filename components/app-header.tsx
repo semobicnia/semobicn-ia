@@ -4,6 +4,7 @@ import {
   DraftingCompass,
   FileClock,
   FilePlus2,
+  FlaskConical,
   LayoutDashboard,
   LogOut,
   UsersRound,
@@ -41,6 +42,12 @@ export function AppHeader({ currentUser }: { currentUser: HeaderUser }) {
       href: "/administracao/usuarios",
       label: "Usuários",
       icon: UsersRound,
+      visible: currentUser.role === "admin",
+    },
+    {
+      href: "/administracao/testes",
+      label: "Testes",
+      icon: FlaskConical,
       visible: currentUser.role === "admin",
     },
   ];
