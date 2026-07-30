@@ -1,5 +1,21 @@
 import type { BoundarySide, TopographicData } from "./topographic";
 
+export type UrbanSketchBoundaryOverride = {
+  side: BoundarySide;
+  label: string;
+  measurement: number | null;
+};
+
+export type UrbanSketchDataOverrides = {
+  claimantName: string;
+  propertyAddress: string;
+  block: string;
+  lot: string;
+  landArea: number | null;
+  builtArea: number | null;
+  boundaries: UrbanSketchBoundaryOverride[];
+};
+
 export type UrbanSketchSettings = {
   northAngle: number;
   scale: string;
@@ -7,6 +23,7 @@ export type UrbanSketchSettings = {
   bci: string;
   sketchNumber: string;
   claimantDocument: string;
+  dataOverrides?: UrbanSketchDataOverrides;
   showBuilding: boolean;
   approximationNotice: boolean;
   vertexOffsets: [
@@ -35,6 +52,58 @@ export const defaultUrbanSketchSettings: UrbanSketchSettings = {
   approximationNotice: true,
   vertexOffsets: emptyVertexOffsets,
 };
+
+export function createSketchDataOverrides(
+  data: TopographicData,
+  saved?: UrbanSketchDataOverrides,
+): UrbanSketchDataOverrides {
+  return {
+    claimantName: saved?.claimantName ?? data.claimantName,
+    propertyAddress: saved?.propertyAddress ?? data.propertyAddress,
+    block: saved?.block ?? data.block,
+    lot: saved?.lot ?? data.lot,
+    landArea: saved ? saved.landArea : data.landArea,
+    builtArea: saved ? saved.builtArea : data.builtArea,
+    boundaries: data.boundaries.map((boundary) => {
+      const stored = saved?.boundaries.find(
+        (item) => item.side === boundary.side,
+      );
+      return {
+        side: boundary.side,
+        label: stored?.label ?? boundary.label,
+        measurement: stored ? stored.measurement : boundary.measurement,
+      };
+    }),
+  };
+}
+
+export function applySketchDataOverrides(
+  data: TopographicData,
+  overrides?: UrbanSketchDataOverrides,
+): TopographicData {
+  if (!overrides) return data;
+  return {
+    ...data,
+    claimantName: overrides.claimantName,
+    propertyAddress: overrides.propertyAddress,
+    block: overrides.block,
+    lot: overrides.lot,
+    landArea: overrides.landArea,
+    builtArea: overrides.builtArea,
+    boundaries: data.boundaries.map((boundary) => {
+      const corrected = overrides.boundaries.find(
+        (item) => item.side === boundary.side,
+      );
+      return corrected
+        ? {
+            ...boundary,
+            label: corrected.label,
+            measurement: corrected.measurement,
+          }
+        : boundary;
+    }),
+  };
+}
 
 export type SketchPoint = {
   x: number;

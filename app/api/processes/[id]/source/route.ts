@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedSession } from "@/lib/auth";
-import { getSignedPrivatePdfUrl } from "@/lib/cloudinary";
+import { getSignedPrivateSourceUrl } from "@/lib/cloudinary";
 import { getProcessSource } from "@/lib/database";
 
 const uuidPattern =
@@ -31,7 +31,7 @@ export async function GET(
       { status: 404 },
     );
   }
-  const signedUrl = getSignedPrivatePdfUrl(source.publicId);
+  const signedUrl = getSignedPrivateSourceUrl(source.publicId);
   if (!signedUrl) {
     return NextResponse.json(
       { error: "O armazenamento do croqui não está configurado." },
@@ -52,10 +52,22 @@ export async function GET(
       .replace(/[^a-zA-Z0-9]+/g, "-")
       .replace(/^-|-$/g, "")
       .toLowerCase() || "imovel";
+  const contentType =
+    response.headers.get("content-type") || "application/octet-stream";
+  const extension =
+    contentType.includes("pdf")
+      ? "pdf"
+      : contentType.includes("png")
+        ? "png"
+        : contentType.includes("webp")
+          ? "webp"
+          : contentType.includes("jpeg")
+            ? "jpg"
+            : "bin";
   return new Response(response.body, {
     headers: {
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="croqui-${safeName}.pdf"`,
+      "Content-Type": contentType,
+      "Content-Disposition": `inline; filename="croqui-${safeName}.${extension}"`,
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },

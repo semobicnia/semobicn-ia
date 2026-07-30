@@ -20,14 +20,19 @@ import {
 } from "react";
 import { AppHeader, type HeaderUser } from "./app-header";
 import {
+  applySketchDataOverrides,
   buildSketchGeometry,
+  createSketchDataOverrides,
   defaultUrbanSketchSettings,
   formatMeasurement,
   getSketchConfrontant,
   getSketchMeasurements,
+  type UrbanSketchBoundaryOverride,
+  type UrbanSketchDataOverrides,
   type UrbanSketchSettings,
 } from "@/lib/croqui";
 import type {
+  BoundarySide,
   MunicipalSecretary,
   TopographicData,
 } from "@/lib/topographic";
@@ -110,6 +115,13 @@ function wrapText(text: string, maxLength: number, maxLines: number) {
 
 type DrawingPoint = { x: number; y: number };
 
+const sketchBoundaryLabels: Record<BoundarySide, string> = {
+  front: "Frente / rua",
+  right: "Flanco direito",
+  left: "Flanco esquerdo",
+  back: "Fundo",
+};
+
 function edgeLabel(
   start: DrawingPoint,
   end: DrawingPoint,
@@ -145,6 +157,10 @@ export function CroquiWorkspace({
     ...defaultUrbanSketchSettings,
     ...initialSettings,
     claimantDocument: initialSettings?.claimantDocument || data.cpf,
+    dataOverrides: createSketchDataOverrides(
+      data,
+      initialSettings?.dataOverrides,
+    ),
   }));
   const [locationImage, setLocationImage] = useState<string | null>(null);
   const [semobiLogo, setSemobiLogo] = useState<string | null>(null);
@@ -155,18 +171,26 @@ export function CroquiWorkspace({
   const [editingVertices, setEditingVertices] = useState(false);
   const draggingVertex = useRef<number | null>(null);
   const [message, setMessage] = useState("");
+  const dataOverrides = useMemo(
+    () => createSketchDataOverrides(data, settings.dataOverrides),
+    [data, settings.dataOverrides],
+  );
+  const effectiveData = useMemo(
+    () => applySketchDataOverrides(data, dataOverrides),
+    [data, dataOverrides],
+  );
   const geometry = useMemo(
-    () => buildSketchGeometry(data, settings),
-    [data, settings],
+    () => buildSketchGeometry(effectiveData, settings),
+    [effectiveData, settings],
   );
   const baseGeometry = useMemo(
     () =>
-      buildSketchGeometry(data, {
+      buildSketchGeometry(effectiveData, {
         ...settings,
         vertexOffsets: defaultUrbanSketchSettings.vertexOffsets,
       }),
     [
-      data,
+      effectiveData,
       settings.approximationNotice,
       settings.inclination,
       settings.northAngle,
@@ -174,15 +198,15 @@ export function CroquiWorkspace({
       settings.showBuilding,
     ],
   );
-  const measurements = getSketchMeasurements(data);
+  const measurements = getSketchMeasurements(effectiveData);
   const [frontUpper, frontLower, backLower, backUpper] = geometry.points;
   const polygon = geometry.points.map((point) => `${point.x},${point.y}`).join(" ");
-  const claimant = data.claimantName.toUpperCase();
+  const claimant = effectiveData.claimantName.toUpperCase();
   const address = [
-    data.propertyAddress,
-    data.neighborhood,
-    data.city,
-    data.state,
+    effectiveData.propertyAddress,
+    effectiveData.neighborhood,
+    effectiveData.city,
+    effectiveData.state,
   ]
     .filter(Boolean)
     .join(", ");
@@ -257,6 +281,42 @@ export function CroquiWorkspace({
     setSettings((current) => ({ ...current, [key]: value }));
   }
 
+  function updateDataOverride<
+    K extends keyof Omit<UrbanSketchDataOverrides, "boundaries">,
+  >(
+    key: K,
+    value: UrbanSketchDataOverrides[K],
+  ) {
+    setSettings((current) => ({
+      ...current,
+      dataOverrides: {
+        ...createSketchDataOverrides(data, current.dataOverrides),
+        [key]: value,
+      },
+    }));
+  }
+
+  function updateBoundaryOverride(
+    side: BoundarySide,
+    key: keyof Omit<UrbanSketchBoundaryOverride, "side">,
+    value: string | number | null,
+  ) {
+    setSettings((current) => {
+      const overrides = createSketchDataOverrides(data, current.dataOverrides);
+      return {
+        ...current,
+        dataOverrides: {
+          ...overrides,
+          boundaries: overrides.boundaries.map((boundary) =>
+            boundary.side === side
+              ? { ...boundary, [key]: value }
+              : boundary,
+          ),
+        },
+      };
+    });
+  }
+
   async function selectLocationImage(file: File | null) {
     if (!file) return;
     setUploadingImage(true);
@@ -326,7 +386,7 @@ export function CroquiWorkspace({
       );
 
       const pdf = await PDFDocument.create();
-      pdf.setTitle(`Croqui urbano - ${data.claimantName}`);
+      pdf.setTitle(`Croqui urbano - ${effectiveData.claimantName}`);
       pdf.setAuthor("SEMOBI - Prefeitura de Coelho Neto");
       const page = pdf.addPage([595.28, 841.89]);
       const png = await pdf.embedPng(await pngBlob.arrayBuffer());
@@ -344,7 +404,7 @@ export function CroquiWorkspace({
       );
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `croqui-urbano-${safeFilename(data.claimantName)}.pdf`;
+      anchor.download = `croqui-urbano-${safeFilename(effectiveData.claimantName)}.pdf`;
       anchor.click();
       URL.revokeObjectURL(url);
       setMessage("PDF A4 gerado com sucesso.");
@@ -527,6 +587,128 @@ export function CroquiWorkspace({
             />
           </label>
 
+          <section className="croqui-correction-panel">
+            <div>
+              <strong>Correção dos dados interpretados</strong>
+              <p>
+                Edite qualquer informação que não corresponda ao desenho
+                original.
+              </p>
+            </div>
+            <label className="field">
+              <span>Nome do posseiro</span>
+              <input
+                value={dataOverrides.claimantName}
+                onChange={(event) =>
+                  updateDataOverride("claimantName", event.target.value)
+                }
+              />
+            </label>
+            <label className="field">
+              <span>Localização / endereço</span>
+              <input
+                value={dataOverrides.propertyAddress}
+                onChange={(event) =>
+                  updateDataOverride("propertyAddress", event.target.value)
+                }
+              />
+            </label>
+            <div className="croqui-code-fields">
+              <label className="field">
+                <span>Quadra</span>
+                <input
+                  value={dataOverrides.block}
+                  onChange={(event) =>
+                    updateDataOverride("block", event.target.value)
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Lote</span>
+                <input
+                  value={dataOverrides.lot}
+                  onChange={(event) =>
+                    updateDataOverride("lot", event.target.value)
+                  }
+                />
+              </label>
+            </div>
+            <div className="croqui-code-fields">
+              <label className="field">
+                <span>Área do terreno (m²)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={dataOverrides.landArea ?? ""}
+                  onChange={(event) =>
+                    updateDataOverride(
+                      "landArea",
+                      event.target.value === ""
+                        ? null
+                        : Number(event.target.value),
+                    )
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Área da construção (m²)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={dataOverrides.builtArea ?? ""}
+                  onChange={(event) =>
+                    updateDataOverride(
+                      "builtArea",
+                      event.target.value === ""
+                        ? null
+                        : Number(event.target.value),
+                    )
+                  }
+                />
+              </label>
+            </div>
+            <div className="croqui-boundary-corrections">
+              <strong>Rua, limites e medidas</strong>
+              {dataOverrides.boundaries.map((boundary) => (
+                <div className="croqui-boundary-correction" key={boundary.side}>
+                  <label className="field">
+                    <span>{sketchBoundaryLabels[boundary.side]}</span>
+                    <input
+                      value={boundary.label}
+                      onChange={(event) =>
+                        updateBoundaryOverride(
+                          boundary.side,
+                          "label",
+                          event.target.value,
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Medida (m)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={boundary.measurement ?? ""}
+                      onChange={(event) =>
+                        updateBoundaryOverride(
+                          boundary.side,
+                          "measurement",
+                          event.target.value === ""
+                            ? null
+                            : Number(event.target.value),
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+              ))}
+            </div>
+          </section>
+
           <label className="check-row">
             <input
               type="checkbox"
@@ -617,6 +799,7 @@ export function CroquiWorkspace({
                 setSettings({
                   ...defaultUrbanSketchSettings,
                   claimantDocument: data.cpf,
+                  dataOverrides: createSketchDataOverrides(data),
                 })
               }
               type="button"
@@ -641,7 +824,7 @@ export function CroquiWorkspace({
             id="urban-sketch-svg"
             viewBox="0 0 595 842"
             role="img"
-            aria-label={`Croqui urbano de ${data.claimantName}`}
+            aria-label={`Croqui urbano de ${effectiveData.claimantName}`}
           >
             <defs>
               <pattern
@@ -744,7 +927,7 @@ export function CroquiWorkspace({
               fontWeight="700"
               transform={`rotate(-59 ${frontConfrontantLabel.x - 95} ${frontConfrontantLabel.y + 75})`}
             >
-              {getSketchConfrontant(data, "front").toUpperCase()}
+              {getSketchConfrontant(effectiveData, "front").toUpperCase()}
             </text>
 
             <polygon
@@ -753,7 +936,9 @@ export function CroquiWorkspace({
               stroke="#111"
               strokeWidth="2.2"
             />
-            {settings.showBuilding && data.builtArea && data.builtArea > 0 ? (
+            {settings.showBuilding &&
+            effectiveData.builtArea &&
+            effectiveData.builtArea > 0 ? (
               <rect
                 x={buildingCenter.x - 70}
                 y={buildingCenter.y - 27}
@@ -787,9 +972,18 @@ export function CroquiWorkspace({
               );
             })}
             {[
-              [rightConfrontantLabel, getSketchConfrontant(data, "right")],
-              [leftConfrontantLabel, getSketchConfrontant(data, "left")],
-              [backConfrontantLabel, getSketchConfrontant(data, "back")],
+              [
+                rightConfrontantLabel,
+                getSketchConfrontant(effectiveData, "right"),
+              ],
+              [
+                leftConfrontantLabel,
+                getSketchConfrontant(effectiveData, "left"),
+              ],
+              [
+                backConfrontantLabel,
+                getSketchConfrontant(effectiveData, "back"),
+              ],
             ].map(([placement, confrontant], index) => {
               const label = placement as ReturnType<typeof edgeLabel>;
               return (
@@ -879,8 +1073,10 @@ export function CroquiWorkspace({
             </text>
             <text x="18" y="718" fontSize="8">
               <tspan fontWeight="700">BCI:</tspan> {settings.bci || "-"}
-              <tspan dx="35" fontWeight="700">QUADRA:</tspan> {data.block || "-"}
-              <tspan dx="35" fontWeight="700">LOTE:</tspan> {data.lot || "-"}
+              <tspan dx="35" fontWeight="700">QUADRA:</tspan>{" "}
+              {effectiveData.block || "-"}
+              <tspan dx="35" fontWeight="700">LOTE:</tspan>{" "}
+              {effectiveData.lot || "-"}
             </text>
             {addressLines.map((line, index) => (
               <text key={line} x="18" y={734 + index * 8} fontSize="7.5">
@@ -944,11 +1140,11 @@ export function CroquiWorkspace({
             <rect x="472" y="748" width="113" height="86" rx="7" fill="white" stroke="#111" />
             <text x="480" y="761" fontSize="6.3">ÁREA DO TERRENO:</text>
             <text x="528.5" y="781" textAnchor="middle" fontSize="12" fontWeight="800">
-              {formatMeasurement(data.landArea)} m²
+              {formatMeasurement(effectiveData.landArea)} m²
             </text>
             <text x="480" y="800" fontSize="6.3">ÁREA DA CONSTRUÇÃO:</text>
             <text x="528.5" y="824" textAnchor="middle" fontSize="12" fontWeight="800">
-              {formatMeasurement(data.builtArea || 0)} m²
+              {formatMeasurement(effectiveData.builtArea || 0)} m²
             </text>
 
             <rect x="10" y="815" width="91" height="19" rx="5" fill="white" stroke="#111" />

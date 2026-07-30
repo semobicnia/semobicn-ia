@@ -1818,6 +1818,41 @@ button:disabled {
   gap: 10px;
 }
 
+.croqui-correction-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #cbdce8;
+  border-radius: 11px;
+  background: #f7fbfe;
+}
+
+.croqui-correction-panel > div:first-child strong,
+.croqui-boundary-corrections > strong {
+  color: #294f6c;
+  font-size: 11px;
+}
+
+.croqui-correction-panel > div:first-child p {
+  margin: 4px 0 0;
+  color: #667b8d;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.croqui-boundary-corrections {
+  display: grid;
+  gap: 9px;
+}
+
+.croqui-boundary-correction {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  gap: 8px;
+  padding-top: 9px;
+  border-top: 1px solid #dce7ee;
+}
+
 .croqui-actions .button {
   justify-content: center;
 }

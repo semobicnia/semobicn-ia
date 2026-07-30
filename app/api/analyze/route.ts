@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
-import { storePrivatePdf } from "@/lib/cloudinary";
+import { storePrivateSource } from "@/lib/cloudinary";
 import { saveProcess } from "@/lib/database";
 import { extractTopographicData } from "@/lib/openai-extraction";
 import { getAuthenticatedSession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+const acceptedTypes = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 
 export async function POST(request: Request) {
   try {
@@ -23,17 +30,21 @@ export async function POST(request: Request) {
       form.get("supplementaryMessage") ?? "",
     ).slice(0, 4000);
 
-    if (!(file instanceof File) || file.type !== "application/pdf") {
+    if (!(file instanceof File) || !acceptedTypes.has(file.type)) {
       return NextResponse.json(
-        { error: "Selecione um arquivo PDF válido." },
+        { error: "Selecione um PDF ou uma foto válida (JPG, PNG ou WebP)." },
         { status: 400 },
       );
     }
 
-    const maxSize = Number(process.env.MAX_PDF_SIZE_BYTES || 10_485_760);
+    const maxSize = Number(
+      process.env.MAX_SOURCE_FILE_SIZE_BYTES ||
+        process.env.MAX_PDF_SIZE_BYTES ||
+        10_485_760,
+    );
     if (file.size > maxSize) {
       return NextResponse.json(
-        { error: "O PDF ultrapassa o limite de 10 MB." },
+        { error: "O arquivo ultrapassa o limite de 10 MB." },
         { status: 413 },
       );
     }
@@ -41,13 +52,14 @@ export async function POST(request: Request) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const data = await extractTopographicData(
       file.name,
+      file.type,
       bytes,
       supplementaryMessage,
     );
 
-    let stored: Awaited<ReturnType<typeof storePrivatePdf>> = null;
+    let stored: Awaited<ReturnType<typeof storePrivateSource>> = null;
     try {
-      stored = await storePrivatePdf(file, bytes);
+      stored = await storePrivateSource(file, bytes);
     } catch {
       data.reviewNotes.push(
         "O croqui foi analisado, mas não foi armazenado no Cloudinary.",
@@ -73,7 +85,7 @@ export async function POST(request: Request) {
     const message =
       error instanceof Error && safeMessages.has(error.message)
         ? error.message
-        : "Não foi possível analisar o PDF.";
+        : "Não foi possível analisar o croqui.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

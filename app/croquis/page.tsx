@@ -55,7 +55,7 @@ export default async function UrbanSketchesPage() {
             <div className="empty-state sketch-empty">
               <MapPinned size={36} />
               <strong>Nenhum processo disponível</strong>
-              <span>Analise um PDF antes de criar o croqui urbano.</span>
+              <span>Analise uma foto ou PDF antes de criar o croqui urbano.</span>
               <Link className="button primary compact" href="/">
                 Nova análise
               </Link>

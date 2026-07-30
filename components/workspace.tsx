@@ -40,7 +40,7 @@ import {
 type Step = "upload" | "review" | "document";
 
 const steps: Array<{ id: Step; label: string; hint: string }> = [
-  { id: "upload", label: "Croqui", hint: "Enviar o PDF" },
+  { id: "upload", label: "Croqui", hint: "Enviar foto ou PDF" },
   { id: "review", label: "Revisão", hint: "Conferir os dados" },
   { id: "document", label: "Documento", hint: "Gerar o PDF" },
 ];
@@ -233,7 +233,7 @@ export function Workspace({
 
   async function analyze() {
     if (!file) {
-      setError("Selecione o croqui em PDF para iniciar a análise.");
+      setError("Selecione uma foto ou PDF do croqui para iniciar a análise.");
       return;
     }
     setLoading(true);
@@ -489,7 +489,7 @@ export function Workspace({
                 <label className={`dropzone ${file ? "has-file" : ""}`}>
                   <input
                     type="file"
-                    accept="application/pdf,.pdf"
+                    accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp"
                     onChange={(event) => {
                       setFile(event.target.files?.[0] ?? null);
                       setError("");
@@ -505,9 +505,9 @@ export function Workspace({
                   ) : (
                     <>
                       <UploadCloud size={36} />
-                      <strong>Selecione o croqui em PDF</strong>
+                      <strong>Selecione uma foto ou PDF do croqui</strong>
                       <span>ou arraste o arquivo para esta área</span>
-                      <small>Somente PDF, com até 10 MB</small>
+                      <small>PDF, JPG, PNG ou WebP, com até 10 MB</small>
                     </>
                   )}
                 </label>

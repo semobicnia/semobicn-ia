@@ -9,7 +9,7 @@ export type StoredImage = StoredFile & {
   format: string;
 };
 
-export async function storePrivatePdf(
+export async function storePrivateSource(
   file: File,
   bytes: Uint8Array,
 ): Promise<StoredFile | null> {
@@ -27,7 +27,7 @@ export async function storePrivatePdf(
   const uploadBytes = Uint8Array.from(bytes);
   form.append(
     "file",
-    new Blob([uploadBytes.buffer], { type: "application/pdf" }),
+    new Blob([uploadBytes.buffer], { type: file.type }),
     file.name,
   );
   form.append("api_key", apiKey);
@@ -50,6 +50,8 @@ export async function storePrivatePdf(
   };
   return { url: result.secure_url, publicId: result.public_id };
 }
+
+export const storePrivatePdf = storePrivateSource;
 
 export async function storePrivateImage(
   file: File,
@@ -105,7 +107,7 @@ function encodePublicId(publicId: string) {
     .join("/");
 }
 
-export function getSignedPrivatePdfUrl(publicId: string): string | null {
+export function getSignedPrivateSourceUrl(publicId: string): string | null {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
   if (!cloudName || !apiSecret || !publicId) return null;
@@ -116,6 +118,8 @@ export function getSignedPrivatePdfUrl(publicId: string): string | null {
     .slice(0, 8);
   return `https://res.cloudinary.com/${encodeURIComponent(cloudName)}/raw/authenticated/s--${signature}--/${encodePublicId(publicId)}`;
 }
+
+export const getSignedPrivatePdfUrl = getSignedPrivateSourceUrl;
 
 export function getSignedPrivateImageUrl(
   publicId: string,

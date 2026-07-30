@@ -90,6 +90,7 @@ function extractOutputText(response: {
 
 export async function extractTopographicData(
   filename: string,
+  mimeType: string,
   bytes: Uint8Array,
   supplementaryMessage: string,
 ): Promise<TopographicData> {
@@ -100,9 +101,13 @@ export async function extractTopographicData(
     );
   }
 
-  const prompt = `Analise visualmente o croqui imobiliário em PDF e extraia os dados para um documento de Informações Topográficas da SEMOBI de Coelho Neto - MA.
+  const prompt = `Analise visualmente o croqui imobiliário enviado como foto ou PDF e extraia os dados para um documento de Informações Topográficas da SEMOBI de Coelho Neto - MA.
 
 Regras obrigatórias:
+- O croqui pode estar manuscrito a caneta ou lápis, com letra cursiva, traço fraco, rasuras, sombras, perspectiva, rotação ou baixa nitidez. Examine toda a imagem ou todas as páginas antes de extrair.
+- Diferencie as linhas do terreno de setas, cotas, textos, carimbos e outros traços auxiliares.
+- Associe cada nome de rua, vizinho e medida ao lado mais próximo do desenho. Confira vírgulas e pontos decimais e confronte as medidas com a área indicada.
+- Quando houver mais de uma leitura plausível, não escolha silenciosamente: use o valor mais legível e registre a alternativa ou a dúvida em reviewNotes para correção humana.
 - Não invente dados ilegíveis; use string vazia ou null e registre a dúvida em reviewNotes.
 - Extraia no campo cpf o CPF ou o CNPJ informado no croqui.
 - Para claimantSex, use female ou male somente quando o croqui ou a mensagem complementar indicarem claramente o sexo; caso contrário, use not_informed para revisão humana.
@@ -120,6 +125,20 @@ Regras obrigatórias:
 Mensagem complementar fornecida pelo servidor:
 ${supplementaryMessage.trim() || "Nenhuma."}`;
 
+  const encodedFile = Buffer.from(bytes).toString("base64");
+  const visualInput =
+    mimeType === "application/pdf"
+      ? {
+          type: "input_file",
+          filename,
+          file_data: `data:${mimeType};base64,${encodedFile}`,
+        }
+      : {
+          type: "input_image",
+          image_url: `data:${mimeType};base64,${encodedFile}`,
+          detail: "high",
+        };
+
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -134,12 +153,7 @@ ${supplementaryMessage.trim() || "Nenhuma."}`;
           role: "user",
           content: [
             { type: "input_text", text: prompt },
-            {
-              type: "input_file",
-              filename,
-              file_data: `data:application/pdf;base64,${Buffer.from(bytes).toString("base64")}`,
-              detail: "high",
-            },
+            visualInput,
           ],
         },
       ],

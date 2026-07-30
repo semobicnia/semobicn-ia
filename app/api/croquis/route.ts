@@ -22,6 +22,42 @@ function validVertexOffsets(value: unknown) {
   );
 }
 
+function validDataOverrides(value: unknown) {
+  if (!value || typeof value !== "object") return false;
+  const overrides = value as Record<string, unknown>;
+  const validArea = (area: unknown) =>
+    area === null ||
+    (typeof area === "number" && Number.isFinite(area) && area >= 0);
+  const validSides = new Set(["front", "right", "left", "back"]);
+  return (
+    typeof overrides.claimantName === "string" &&
+    typeof overrides.propertyAddress === "string" &&
+    typeof overrides.block === "string" &&
+    typeof overrides.lot === "string" &&
+    validArea(overrides.landArea) &&
+    validArea(overrides.builtArea) &&
+    Array.isArray(overrides.boundaries) &&
+    overrides.boundaries.length === 4 &&
+    new Set(
+      overrides.boundaries.map((boundary) =>
+        boundary && typeof boundary === "object"
+          ? (boundary as { side?: unknown }).side
+          : null,
+      ),
+    ).size === 4 &&
+    overrides.boundaries.every((boundary) => {
+      if (!boundary || typeof boundary !== "object") return false;
+      const item = boundary as Record<string, unknown>;
+      return (
+        typeof item.side === "string" &&
+        validSides.has(item.side) &&
+        typeof item.label === "string" &&
+        validArea(item.measurement)
+      );
+    })
+  );
+}
+
 export async function POST(request: Request) {
   const session = await getAuthenticatedSession();
   if (!session || !session.user.role) {
@@ -43,6 +79,7 @@ export async function POST(request: Request) {
       typeof body.settings.bci !== "string" ||
       typeof body.settings.sketchNumber !== "string" ||
       typeof body.settings.claimantDocument !== "string" ||
+      !validDataOverrides(body.settings.dataOverrides) ||
       typeof body.settings.showBuilding !== "boolean" ||
       typeof body.settings.approximationNotice !== "boolean" ||
       !validVertexOffsets(body.settings.vertexOffsets)
