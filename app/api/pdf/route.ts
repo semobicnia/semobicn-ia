@@ -5,14 +5,18 @@ import {
   normalizeTopographicData,
 } from "@/lib/topographic";
 import { getAuthenticatedSession } from "@/lib/auth";
-import { markProcessCompleted } from "@/lib/database";
+import {
+  getProcessDetail,
+  getUrbanSketch,
+  markProcessCompleted,
+} from "@/lib/database";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
     const session = await getAuthenticatedSession();
-    if (!session) {
+    if (!session || !session.user.role) {
       return NextResponse.json(
         { error: "Sua sessão expirou. Entre novamente." },
         { status: 401 },
@@ -30,19 +34,49 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-
-    const data = normalizeTopographicData(payload.data);
-    const bytes = await createTopographicPdf(data);
     if (
-      typeof payload.processId === "string" &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      typeof payload.processId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
         payload.processId,
       )
     ) {
-      await markProcessCompleted(payload.processId, session.user.id).catch(
-        () => undefined,
+      return NextResponse.json(
+        {
+          error:
+            "Conclua o croqui antes de gerar as Informações Topográficas.",
+        },
+        { status: 409 },
       );
     }
+    const [process, sketch] = await Promise.all([
+      getProcessDetail({
+        processId: payload.processId,
+        userId: session.user.id,
+        role: session.user.role,
+      }),
+      getUrbanSketch(payload.processId),
+    ]);
+    if (!process) {
+      return NextResponse.json(
+        { error: "Processo não encontrado ou acesso não autorizado." },
+        { status: 404 },
+      );
+    }
+    if (!sketch || sketch.status !== "finalized") {
+      return NextResponse.json(
+        {
+          error:
+            "Conclua o croqui antes de gerar as Informações Topográficas.",
+        },
+        { status: 409 },
+      );
+    }
+
+    const data = normalizeTopographicData(payload.data);
+    const bytes = await createTopographicPdf(data);
+    await markProcessCompleted(payload.processId, session.user.id).catch(
+      () => undefined,
+    );
     const safeName =
       data.claimantName
         .normalize("NFD")

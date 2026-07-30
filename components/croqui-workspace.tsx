@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowRight,
   Download,
   FileDown,
   ImagePlus,
@@ -404,7 +405,7 @@ export function CroquiWorkspace({
 
   async function generateA4Pdf() {
     const svg = document.querySelector<SVGSVGElement>("#urban-sketch-svg");
-    if (!svg) return;
+    if (!svg) return false;
     setGeneratingPdf(true);
     setMessage("");
     let svgUrl = "";
@@ -459,10 +460,12 @@ export function CroquiWorkspace({
       anchor.click();
       URL.revokeObjectURL(url);
       setMessage("PDF A4 gerado com sucesso.");
+      return true;
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Não foi possível gerar o PDF.",
       );
+      return false;
     } finally {
       if (svgUrl) URL.revokeObjectURL(svgUrl);
       setGeneratingPdf(false);
@@ -510,7 +513,7 @@ export function CroquiWorkspace({
     setMessage("Formato calculado restaurado.");
   }
 
-  async function saveSketch() {
+  async function saveSketch(finalize = false) {
     if (!processId) {
       setMessage("O modelo de demonstração não altera nenhum processo.");
       return;
@@ -518,16 +521,42 @@ export function CroquiWorkspace({
     setSaving(true);
     setMessage("");
     try {
+      if (finalize) {
+        const processResponse = await fetch(`/api/processes/${processId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: effectiveData, status: "review" }),
+        });
+        const processResult = (await processResponse.json()) as {
+          error?: string;
+        };
+        if (!processResponse.ok) {
+          throw new Error(
+            processResult.error ||
+              "Não foi possível preparar as Informações Topográficas.",
+          );
+        }
+        const generated = await generateA4Pdf();
+        if (!generated) {
+          throw new Error(
+            "O croqui precisa ser gerado antes das Informações Topográficas.",
+          );
+        }
+      }
       const response = await fetch("/api/croquis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ processId, settings }),
+        body: JSON.stringify({ processId, settings, finalize }),
       });
       const result = (await response.json()) as { error?: string };
       if (!response.ok) {
         throw new Error(result.error || "Não foi possível salvar o croqui.");
       }
-      setMessage("Croqui salvo no processo.");
+      if (finalize) {
+        window.location.href = `/processos/${processId}`;
+        return;
+      }
+      setMessage("Rascunho do croqui salvo no processo.");
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Não foi possível salvar.",
@@ -544,11 +573,16 @@ export function CroquiWorkspace({
         <aside className="croqui-controls">
           <div>
             <p className="eyebrow">Agente de Croqui Urbano</p>
-            <h1>Configurar desenho</h1>
+            <h1>Revisar e concluir croqui</h1>
             <p>
-              O desenho usa as medidas já revisadas no processo e segue o
-              padrão do croqui institucional enviado.
+              A análise inicial preenche o desenho. Confira e corrija os dados
+              antes de avançar para as Informações Topográficas.
             </p>
+          </div>
+          <div className="croqui-flow-stage">
+            <span>Etapa 2 de 3</span>
+            <strong>Croqui urbano</strong>
+            <small>Próxima: Informações Topográficas</small>
           </div>
 
           <label className="field">
@@ -809,9 +843,27 @@ export function CroquiWorkspace({
           </div>
 
           <div className="croqui-actions">
-            <button className="button primary" onClick={saveSketch} disabled={saving}>
+            {processId && (
+              <button
+                className="button primary"
+                onClick={() => void saveSketch(true)}
+                disabled={saving}
+                type="button"
+              >
+                <ArrowRight size={17} />
+                {saving
+                  ? "Gerando e concluindo croqui..."
+                  : "Gerar croqui e continuar"}
+              </button>
+            )}
+            <button
+              className="button secondary"
+              onClick={() => void saveSketch(false)}
+              disabled={saving}
+              type="button"
+            >
               <Save size={17} />
-              {saving ? "Salvando..." : "Salvar croqui"}
+              {saving ? "Salvando..." : "Salvar rascunho"}
             </button>
             <button
               className="button secondary"
@@ -862,11 +914,9 @@ export function CroquiWorkspace({
           {message && <p className="croqui-message">{message}</p>}
           <Link
             className="back-process-link"
-            href={processId ? `/processos/${processId}` : "/croquis"}
+            href="/croquis"
           >
-            {processId
-              ? "Voltar às informações topográficas"
-              : "Voltar à lista de croquis"}
+            Voltar à lista de croquis
           </Link>
         </aside>
 

@@ -68,6 +68,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       processId?: string;
       settings?: UrbanSketchSettings;
+      finalize?: boolean;
     };
     if (
       !body.processId ||
@@ -92,6 +93,7 @@ export async function POST(request: Request) {
       userId: session.user.id,
       role: session.user.role,
       settings: body.settings,
+      status: body.finalize ? "finalized" : "review",
     });
     if (!saved) {
       return NextResponse.json({ error: "Processo não encontrado." }, { status: 404 });

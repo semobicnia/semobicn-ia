@@ -28,10 +28,10 @@ export default async function UrbanSketchesPage() {
           <span><DraftingCompass size={24} /></span>
           <div>
             <p className="eyebrow">Agente de Croqui Urbano</p>
-            <h1>Criar croqui a partir de um processo</h1>
+            <h1>Croquis dos imóveis</h1>
             <p>
-              Selecione um processo com as medidas revisadas para gerar o
-              desenho técnico padronizado.
+              Inicie um novo croqui pelo desenho original ou continue um
+              processo já analisado.
             </p>
           </div>
         </section>
@@ -54,10 +54,10 @@ export default async function UrbanSketchesPage() {
           {processes.length === 0 ? (
             <div className="empty-state sketch-empty">
               <MapPinned size={36} />
-              <strong>Nenhum processo disponível</strong>
-              <span>Analise uma foto ou PDF antes de criar o croqui urbano.</span>
+              <strong>Nenhum croqui iniciado</strong>
+              <span>Envie uma foto ou PDF do desenho original para começar.</span>
               <Link className="button primary compact" href="/">
-                Nova análise
+                Criar primeiro croqui
               </Link>
             </div>
           ) : (

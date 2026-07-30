@@ -28,7 +28,7 @@ const roleLabels: Record<UserRole, string> = {
 export function AppHeader({ currentUser }: { currentUser: HeaderUser }) {
   const pathname = usePathname();
   const links = [
-    { href: "/", label: "Nova análise", icon: FilePlus2, visible: true },
+    { href: "/", label: "Novo croqui", icon: FilePlus2, visible: true },
     { href: "/croquis", label: "Croquis", icon: DraftingCompass, visible: true },
     { href: "/historico", label: "Histórico", icon: FileClock, visible: true },
     {

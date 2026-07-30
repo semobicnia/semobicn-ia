@@ -1818,6 +1818,33 @@ button:disabled {
   gap: 10px;
 }
 
+.croqui-flow-stage {
+  display: grid;
+  gap: 3px;
+  padding: 11px 12px;
+  border: 1px solid #b9d4e6;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #eef8ff, #f8fcff);
+}
+
+.croqui-flow-stage span {
+  color: #2672a4;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.croqui-flow-stage strong {
+  color: #183f5a;
+  font-size: 12px;
+}
+
+.croqui-flow-stage small {
+  color: #657b8b;
+  font-size: 9px;
+}
+
 .croqui-correction-panel {
   display: grid;
   gap: 12px;

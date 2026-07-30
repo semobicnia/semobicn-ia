@@ -40,9 +40,13 @@ import {
 type Step = "upload" | "review" | "document";
 
 const steps: Array<{ id: Step; label: string; hint: string }> = [
-  { id: "upload", label: "Croqui", hint: "Enviar foto ou PDF" },
-  { id: "review", label: "Revisão", hint: "Conferir os dados" },
-  { id: "document", label: "Documento", hint: "Gerar o PDF" },
+  { id: "upload", label: "Desenho original", hint: "Enviar foto ou PDF" },
+  { id: "review", label: "Croqui urbano", hint: "Revisar e concluir" },
+  {
+    id: "document",
+    label: "Informações Topográficas",
+    hint: "Revisar e gerar o PDF",
+  },
 ];
 
 function Field({
@@ -208,7 +212,8 @@ export function Workspace({
     };
   }, []);
 
-  const currentIndex = steps.findIndex((item) => item.id === step);
+  const currentIndex =
+    step === "document" ? steps.length : initialProcess ? 2 : 0;
   const completeness = useMemo(() => {
     const checks = [
       data.claimantName,
@@ -233,7 +238,7 @@ export function Workspace({
 
   async function analyze() {
     if (!file) {
-      setError("Selecione uma foto ou PDF do croqui para iniciar a análise.");
+      setError("Selecione uma foto ou PDF do desenho para iniciar.");
       return;
     }
     setLoading(true);
@@ -251,10 +256,12 @@ export function Workspace({
       if (!response.ok || !result.data) {
         throw new Error(result.error || "Não foi possível analisar o croqui.");
       }
-      setData(result.data);
-      setProcessId(result.processId || null);
-      setProcessStatus("review");
-      setStep("review");
+      if (!result.processId) {
+        throw new Error(
+          "O desenho foi analisado, mas o processo não pôde ser criado.",
+        );
+      }
+      window.location.href = `/croquis/novo?processo=${result.processId}`;
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -267,11 +274,7 @@ export function Workspace({
   }
 
   function useExample() {
-    setData(sampleTopographicData);
-    setProcessId(null);
-    setProcessStatus("review");
-    setError("");
-    setStep("review");
+    window.location.href = "/croquis/novo?demonstracao=1";
   }
 
   async function persistProcess(nextStatus: ProcessStatus) {
@@ -311,7 +314,7 @@ export function Workspace({
     setError("");
     setSavedMessage("");
     try {
-      if (processId) await persistProcess("completed");
+      if (processId) await persistProcess(processStatus);
       const response = await fetch("/api/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -332,6 +335,7 @@ export function Workspace({
       anchor.download = filename;
       anchor.click();
       URL.revokeObjectURL(url);
+      setProcessStatus("completed");
       setGeneratedName(filename);
       setStep("document");
     } catch (reason) {
@@ -367,17 +371,17 @@ export function Workspace({
         <section className="intro">
           <div>
             <p className="eyebrow">
-              <Sparkles size={15} /> Assistente topográfico
+              <Sparkles size={15} /> Fluxo documental SEMOBI
             </p>
             <h1>
               {initialProcess
-                ? "Revise e atualize o processo."
-                : "Do croqui ao documento, com revisão humana."}
+                ? "Revise as Informações Topográficas."
+                : "Comece pelo croqui do imóvel."}
             </h1>
             <p>
               {initialProcess
-                ? "Confira os dados salvos, altere a situação e gere novamente o PDF quando necessário."
-                : "Envie o desenho do imóvel, confira cada informação extraída e gere o PDF no padrão oficial da SEMOBI."}
+                ? "O croqui já foi concluído. Confira os dados derivados e gere o documento padronizado."
+                : "Envie o desenho original. O sistema criará primeiro o croqui urbano e, somente depois, as Informações Topográficas."}
             </p>
           </div>
           <div className="intro-badge">
@@ -421,7 +425,7 @@ export function Workspace({
                 href={`/croquis/novo?processo=${initialProcess.id}`}
               >
                 <DraftingCompass size={16} />
-                Criar croqui urbano
+                Revisar croqui urbano
               </Link>
               {initialProcess.sourceAvailable && (
                 <a
@@ -450,7 +454,7 @@ export function Workspace({
         <nav className="stepper" aria-label="Etapas do processo">
           {steps.map((item, index) => {
             const complete = index < currentIndex;
-            const active = item.id === step;
+            const active = index === currentIndex;
             return (
               <div
                 className={`step ${active ? "active" : ""} ${complete ? "complete" : ""}`}
@@ -478,10 +482,11 @@ export function Workspace({
                   </span>
                   <div>
                     <p className="eyebrow">Nova análise</p>
-                    <h2>Envie o croqui do imóvel</h2>
+                    <h2>Envie o desenho original do imóvel</h2>
                     <p>
                       O arquivo será lido visualmente para identificar medidas,
-                      confrontantes, áreas e dados do posseiro.
+                      confrontantes, áreas e dados necessários à criação do
+                      croqui urbano.
                     </p>
                   </div>
                 </div>
@@ -505,7 +510,7 @@ export function Workspace({
                   ) : (
                     <>
                       <UploadCloud size={36} />
-                      <strong>Selecione uma foto ou PDF do croqui</strong>
+                      <strong>Selecione uma foto ou PDF do desenho</strong>
                       <span>ou arraste o arquivo para esta área</span>
                       <small>PDF, JPG, PNG ou WebP, com até 10 MB</small>
                     </>
@@ -534,7 +539,7 @@ export function Workspace({
                 <div className="panel-actions">
                   <button className="button secondary" onClick={useExample}>
                     <FileText size={17} />
-                    Usar exemplo
+                    Visualizar modelo
                   </button>
                   <button
                     className="button primary"
@@ -546,7 +551,9 @@ export function Workspace({
                     ) : (
                       <Sparkles size={18} />
                     )}
-                    {loading ? "Analisando o croqui..." : "Analisar croqui"}
+                    {loading
+                      ? "Preparando o croqui..."
+                      : "Analisar e criar croqui"}
                   </button>
                 </div>
               </div>
@@ -899,12 +906,13 @@ export function Workspace({
                     className="button secondary"
                     onClick={() =>
                       initialProcess
-                        ? (window.location.href = "/historico")
+                        ? (window.location.href =
+                            `/croquis/novo?processo=${initialProcess.id}`)
                         : setStep("upload")
                     }
                   >
                     <ArrowLeft size={17} />
-                    {initialProcess ? "Voltar ao histórico" : "Voltar"}
+                    {initialProcess ? "Voltar ao croqui" : "Voltar"}
                   </button>
                   <button
                     className="button primary"
@@ -966,14 +974,14 @@ export function Workspace({
                 <span>
                   <strong>
                     {step === "upload"
-                      ? "Novo documento"
+                      ? "Novo croqui"
                       : data.claimantName || "Sem identificação"}
                   </strong>
                   <small>
                     {file?.name ||
                       (initialProcess
                         ? "Processo cadastrado"
-                        : "Croqui ainda não selecionado")}
+                        : "Desenho ainda não selecionado")}
                   </small>
                 </span>
               </div>

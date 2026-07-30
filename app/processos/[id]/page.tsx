@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { Workspace } from "@/components/workspace";
 import { getAuthenticatedSession } from "@/lib/auth";
-import { getProcessDetail } from "@/lib/database";
+import { getProcessDetail, getUrbanSketch } from "@/lib/database";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -22,6 +22,10 @@ export default async function ProcessPage({
     role: session.user.role,
   });
   if (!process) notFound();
+  const sketch = await getUrbanSketch(process.id);
+  if (!sketch || sketch.status !== "finalized") {
+    redirect(`/croquis/novo?processo=${process.id}`);
+  }
 
   return (
     <Workspace

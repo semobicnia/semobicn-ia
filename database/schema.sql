@@ -246,7 +246,7 @@ select
   process.id,
   process.created_by_user_id,
   'created',
-  'Processo criado a partir da análise do croqui.'
+  'Processo iniciado a partir do desenho original.'
 from topographic_processes process
 where not exists (
   select 1 from process_events event

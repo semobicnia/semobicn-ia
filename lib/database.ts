@@ -353,6 +353,7 @@ export async function saveUrbanSketch(input: {
   userId: string;
   role: "admin" | "operator" | "reviewer";
   settings: UrbanSketchSettings;
+  status: "review" | "finalized";
 }): Promise<boolean> {
   const sql = createDatabaseClient();
   if (!sql) return false;
@@ -374,15 +375,18 @@ export async function saveUrbanSketch(input: {
       insert into urban_sketches (
         process_id,
         created_by_user_id,
-        settings
+        settings,
+        status
       ) values (
         ${input.processId}::uuid,
         ${input.userId}::uuid,
-        ${sql.json(input.settings)}
+        ${sql.json(input.settings)},
+        ${input.status}
       )
       on conflict (process_id) do update
       set
         settings = excluded.settings,
+        status = excluded.status,
         updated_at = now()
     `;
 
@@ -397,8 +401,12 @@ export async function saveUrbanSketch(input: {
         ${input.processId}::uuid,
         ${input.userId}::uuid,
         'sketch_saved',
-        'Croqui urbano salvo ou atualizado.',
-        ${sql.json({ settings: input.settings })}
+        ${
+          input.status === "finalized"
+            ? "Croqui urbano concluído para geração das Informações Topográficas."
+            : "Rascunho do croqui urbano salvo."
+        },
+        ${sql.json({ settings: input.settings, status: input.status })}
       )
     `;
     return true;
@@ -469,7 +477,7 @@ export async function saveProcess(input: ProcessInput): Promise<string | null> {
           ${row.id}::uuid,
           ${input.createdByUserId}::uuid,
           'created',
-          'Processo criado a partir da análise do croqui.'
+          'Processo iniciado a partir do desenho original.'
         )
       `;
     }

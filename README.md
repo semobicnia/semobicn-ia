@@ -1,12 +1,13 @@
 # SEMOBICN IA
 
-Sistema interno para transformar croquis de imóveis em documentos padronizados de
-Informações Topográficas.
+Sistema interno para transformar desenhos originais de imóveis em croquis
+urbanos e, a partir deles, gerar documentos padronizados de Informações
+Topográficas.
 
 ## Tecnologias
 
 - Next.js, TypeScript e Tailwind CSS
-- OpenAI Responses API para leitura visual e extração estruturada de PDFs
+- OpenAI Responses API para leitura visual e extração estruturada de fotos e PDFs
 - Neon PostgreSQL para os processos
 - Cloudinary para armazenamento privado dos croquis
 - PDF-Lib para geração do documento final
@@ -23,6 +24,14 @@ Abra `http://localhost:3000`.
 
 Sem variáveis externas, a interface pode ser testada com o botão **Usar exemplo**.
 Para analisar croquis reais, configure as variáveis descritas em `.env.example`.
+
+## Fluxo documental
+
+1. O servidor envia a foto ou o PDF do desenho original.
+2. O sistema interpreta os dados e cria o croqui urbano para revisão.
+3. O servidor corrige medidas, limites, áreas e identificação e conclui o croqui.
+4. Somente depois da conclusão do croqui, o sistema libera a revisão e a geração
+   das Informações Topográficas.
 
 ## Acesso institucional
 
