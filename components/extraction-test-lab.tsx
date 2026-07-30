@@ -191,13 +191,22 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
               x: away.x / awayLength,
               y: away.y / awayLength,
             };
+            const edgeLength = Math.max(
+              Math.hypot(end.x - start.x, end.y - start.y),
+              1,
+            );
+            const tangent = {
+              x: (end.x - start.x) / edgeLength,
+              y: (end.y - start.y) / edgeLength,
+            };
+            const extension = edge.curved ? 0 : Math.min(34, edgeLength * 0.22);
             const upperStart = {
-              x: start.x + normal.x * 11,
-              y: start.y + normal.y * 11,
+              x: start.x + normal.x * 11 - tangent.x * extension,
+              y: start.y + normal.y * 11 - tangent.y * extension,
             };
             const upperEnd = {
-              x: end.x + normal.x * 11,
-              y: end.y + normal.y * 11,
+              x: end.x + normal.x * 11 + tangent.x * extension,
+              y: end.y + normal.y * 11 + tangent.y * extension,
             };
             const control = edgeControl(start, end, centroid, edge);
             const upperControl = {
@@ -205,12 +214,12 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
               y: control.y + normal.y * 11,
             };
             const lowerStart = {
-              x: start.x + normal.x * 35,
-              y: start.y + normal.y * 35,
+              x: start.x + normal.x * 35 - tangent.x * extension,
+              y: start.y + normal.y * 35 - tangent.y * extension,
             };
             const lowerEnd = {
-              x: end.x + normal.x * 35,
-              y: end.y + normal.y * 35,
+              x: end.x + normal.x * 35 + tangent.x * extension,
+              y: end.y + normal.y * 35 + tangent.y * extension,
             };
             const lowerControl = {
               x: control.x + normal.x * 35,
@@ -264,18 +273,13 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
           strokeLinejoin="round"
         />
         {points.map((point, index) => (
-          <g key={`plot-point-${index}`}>
-            <circle cx={point.x} cy={point.y} r="3.2" fill="#111" />
-            <text
-              x={point.x + 6}
-              y={point.y - 5}
-              fontSize="7"
-              fontWeight="800"
-              fill="#111"
-            >
-              V{index + 1}
-            </text>
-          </g>
+          <circle
+            key={`plot-point-${index}`}
+            cx={point.x}
+            cy={point.y}
+            r="3.2"
+            fill="#111"
+          />
         ))}
         {geometry.edges.map((edge, index) => {
           const start = points[edge.fromVertex];
@@ -285,23 +289,60 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
             x: (start.x + end.x) / 2,
             y: (start.y + end.y) / 2,
           };
+          const away = {
+            x: middle.x - centroid.x,
+            y: middle.y - centroid.y,
+          };
+          const awayLength = Math.max(Math.hypot(away.x, away.y), 1);
+          const normal = {
+            x: away.x / awayLength,
+            y: away.y / awayLength,
+          };
           const angle = readableEdgeAngle(start, end);
-          return edge.measurement === null ? null : (
-            <text
-              key={`edge-measurement-${index}`}
-              x={middle.x}
-              y={middle.y}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fontSize="7.5"
-              fontWeight="800"
-              paintOrder="stroke"
-              stroke="white"
-              strokeWidth="3"
-              transform={`rotate(${angle} ${middle.x} ${middle.y})`}
-            >
-              {formatMeasurement(edge.measurement)} m
-            </text>
+          const measurementOffset = edge.isStreet ? -9 : 11;
+          const measurementPoint = {
+            x: middle.x + normal.x * measurementOffset,
+            y: middle.y + normal.y * measurementOffset,
+          };
+          const labelPoint = {
+            x: middle.x + normal.x * 27,
+            y: middle.y + normal.y * 27,
+          };
+          return (
+            <g key={`edge-information-${index}`}>
+              {edge.measurement !== null && (
+                <text
+                  x={measurementPoint.x}
+                  y={measurementPoint.y}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize="7.5"
+                  fontWeight="800"
+                  paintOrder="stroke"
+                  stroke="white"
+                  strokeWidth="3"
+                  transform={`rotate(${angle} ${measurementPoint.x} ${measurementPoint.y})`}
+                >
+                  {formatMeasurement(edge.measurement)} m
+                </text>
+              )}
+              {!edge.isStreet && edge.label && (
+                <text
+                  x={labelPoint.x}
+                  y={labelPoint.y}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize="7"
+                  fontWeight="800"
+                  paintOrder="stroke"
+                  stroke="white"
+                  strokeWidth="3"
+                  transform={`rotate(${angle} ${labelPoint.x} ${labelPoint.y})`}
+                >
+                  {edge.label.toUpperCase().slice(0, 34)}
+                </text>
+              )}
+            </g>
           );
         })}
       </svg>

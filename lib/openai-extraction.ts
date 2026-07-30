@@ -189,8 +189,10 @@ Regras obrigatórias:
 - Retorne exatamente quatro limites: front, right, left e back.
 - Além dos quatro limites textuais, reconstrua a geometria visual em plotGeometry. Ela deve representar o contorno real do terreno, inclusive quando possuir 3, 5 ou mais faces.
 - Em plotGeometry.vertices, informe os vértices do terreno em ordem horária, usando coordenadas normalizadas de 0 a 1000 conforme a posição no desenho original (x cresce para a direita e y para baixo). Não inclua vértices de cotas, setas ou construções.
+- Preserve rigorosamente a orientação visual do contorno como ele aparece no arquivo. Não gire, espelhe, endireite nem transforme o terreno para deixá-lo horizontal ou vertical.
 - Em plotGeometry.edges, crie uma aresta para cada par consecutivo de vértices, inclusive a última ligada à primeira. Associe a cada face seu confrontante, medida e eventual rua.
 - Marque isStreet=true em toda face que confrontar com rua, avenida, travessa ou estrada. Preserve o nome em streetName e a posição correta em relação ao terreno.
+- Se a mesma rua confrontar com duas ou mais faces, marque todas essas arestas como rua e repita o mesmo streetName nelas, mantendo a sequência e a mudança de direção observadas no original.
 - Quando a borda do terreno ou a rua for curva, marque curved=true. Use curveBulge entre -1 e 1 para indicar a curvatura aproximada: valor positivo curva para o interior do polígono visual e negativo para o exterior; use 0 em linha reta.
 - Classifique shapeType como square, rectangle, trapezoid ou irregular. Use irregular para qualquer terreno com mais de quatro faces. Só use unknown quando o contorno estiver realmente ilegível.
 - A geometria é uma representação aproximada para revisão humana. Registre em plotGeometry.reviewNotes qualquer vértice, rua ou curvatura duvidosa.
