@@ -40,6 +40,8 @@ export async function POST(request: Request) {
       typeof body.settings.northAngle !== "number" ||
       typeof body.settings.inclination !== "number" ||
       typeof body.settings.scale !== "string" ||
+      typeof body.settings.bci !== "string" ||
+      typeof body.settings.sketchNumber !== "string" ||
       typeof body.settings.showBuilding !== "boolean" ||
       typeof body.settings.approximationNotice !== "boolean" ||
       !validVertexOffsets(body.settings.vertexOffsets)

@@ -4,6 +4,8 @@ export type UrbanSketchSettings = {
   northAngle: number;
   scale: string;
   inclination: number;
+  bci: string;
+  sketchNumber: string;
   showBuilding: boolean;
   approximationNotice: boolean;
   vertexOffsets: [
@@ -23,8 +25,10 @@ const emptyVertexOffsets: UrbanSketchSettings["vertexOffsets"] = [
 
 export const defaultUrbanSketchSettings: UrbanSketchSettings = {
   northAngle: 0,
-  scale: "1:250",
+  scale: "1:200",
   inclination: 8,
+  bci: "",
+  sketchNumber: "001",
   showBuilding: true,
   approximationNotice: true,
   vertexOffsets: emptyVertexOffsets,
@@ -70,32 +74,61 @@ export function buildSketchGeometry(
 ): SketchGeometry {
   const measurements = getSketchMeasurements(data);
   const averageDepth = Math.max((measurements.left + measurements.right) / 2, 1);
+  const maxDepth = Math.max(measurements.left, measurements.right, 1);
   const maxWidth = Math.max(measurements.front, measurements.back, 1);
-  const width = 300;
-  // Reserva a faixa superior para o mapa, a rosa dos ventos e o título.
-  // Terrenos muito compridos continuam proporcionais sem invadir o cabeçalho.
-  const height = Math.min(270, Math.max(205, (averageDepth / maxWidth) * 100));
-  const frontWidth = (measurements.front / maxWidth) * width;
-  const backWidth = (measurements.back / maxWidth) * width;
-  const inclination = Math.max(-50, Math.min(50, settings.inclination));
-  const centerX = 300;
-  const bottomY = 575;
-  const topY = bottomY - height;
+  const length = Math.min(365, Math.max(285, (averageDepth / maxDepth) * 345));
+  const frontWidth = Math.min(
+    115,
+    Math.max(62, (measurements.front / maxWidth) * 94),
+  );
+  const backWidth = Math.min(
+    115,
+    Math.max(62, (measurements.back / maxWidth) * 94),
+  );
+  const angle = ((25 + Math.max(-50, Math.min(50, settings.inclination)) * 0.35) *
+    Math.PI) /
+    180;
+  const axisX = Math.cos(angle);
+  const axisY = Math.sin(angle);
+  const normalX = -axisY;
+  const normalY = axisX;
+  const centerX = 330;
+  const centerY = 430;
+  const frontCenter = {
+    x: centerX - (axisX * length) / 2,
+    y: centerY - (axisY * length) / 2,
+  };
+  const backCenter = {
+    x: centerX + (axisX * length) / 2,
+    y: centerY + (axisY * length) / 2,
+  };
   const basePoints: SketchGeometry["points"] = [
-    { x: centerX - frontWidth / 2, y: bottomY },
-    { x: centerX + frontWidth / 2, y: bottomY },
-    { x: centerX + inclination + backWidth / 2, y: topY },
-    { x: centerX + inclination - backWidth / 2, y: topY },
+    {
+      x: frontCenter.x - (normalX * frontWidth) / 2,
+      y: frontCenter.y - (normalY * frontWidth) / 2,
+    },
+    {
+      x: frontCenter.x + (normalX * frontWidth) / 2,
+      y: frontCenter.y + (normalY * frontWidth) / 2,
+    },
+    {
+      x: backCenter.x + (normalX * backWidth) / 2,
+      y: backCenter.y + (normalY * backWidth) / 2,
+    },
+    {
+      x: backCenter.x - (normalX * backWidth) / 2,
+      y: backCenter.y - (normalY * backWidth) / 2,
+    },
   ];
   const offsets =
     Array.isArray(settings.vertexOffsets) && settings.vertexOffsets.length === 4
       ? settings.vertexOffsets
       : emptyVertexOffsets;
   const limits = [
-    { minX: 90, maxX: 295, minY: 430, maxY: 620 },
-    { minX: 305, maxX: 510, minY: 430, maxY: 620 },
-    { minX: 305, maxX: 510, minY: 295, maxY: 450 },
-    { minX: 90, maxX: 295, minY: 295, maxY: 450 },
+    { minX: 85, maxX: 330, minY: 250, maxY: 500 },
+    { minX: 70, maxX: 310, minY: 310, maxY: 570 },
+    { minX: 330, maxX: 550, minY: 390, maxY: 650 },
+    { minX: 350, maxX: 565, minY: 300, maxY: 590 },
   ];
   const points = basePoints.map((point, index) => {
     const offset = offsets[index];
@@ -110,8 +143,8 @@ export function buildSketchGeometry(
 
   return {
     points,
-    width,
-    height,
+    width: length,
+    height: Math.max(frontWidth, backWidth),
   };
 }
 
