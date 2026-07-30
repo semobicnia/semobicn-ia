@@ -8,7 +8,7 @@ import {
   Play,
   UploadCloud,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   boundaryLabels,
   type PlotEdge,
@@ -45,6 +45,20 @@ function formatNumber(value: number | null) {
   return new Intl.NumberFormat("pt-BR", {
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function formatMeasurement(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function readableEdgeAngle(start: PlotVertex, end: PlotVertex) {
+  let angle = (Math.atan2(end.y - start.y, end.x - start.x) * 180) / Math.PI;
+  if (angle > 90) angle -= 180;
+  if (angle < -90) angle += 180;
+  return angle;
 }
 
 function scaledVertices(vertices: PlotVertex[]) {
@@ -93,6 +107,7 @@ function edgeControl(
 }
 
 function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
+  const dotPatternId = useId().replaceAll(":", "");
   if (geometry.vertices.length < 3) {
     return (
       <div className="test-sketch-empty">
@@ -142,6 +157,16 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
         role="img"
         aria-label={`Representação aproximada do terreno em formato ${shapeLabels[geometry.shapeType]}`}
       >
+        <defs>
+          <pattern
+            id={dotPatternId}
+            width="7"
+            height="7"
+            patternUnits="userSpaceOnUse"
+          >
+            <circle cx="2" cy="2" r="0.7" fill="#7c858b" />
+          </pattern>
+        </defs>
         <rect width="320" height="245" rx="10" fill="#fbfcfd" />
         {geometry.edges
           .filter(
@@ -166,44 +191,56 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
               x: away.x / awayLength,
               y: away.y / awayLength,
             };
-            const roadStart = {
-              x: start.x + normal.x * 13,
-              y: start.y + normal.y * 13,
+            const upperStart = {
+              x: start.x + normal.x * 11,
+              y: start.y + normal.y * 11,
             };
-            const roadEnd = {
-              x: end.x + normal.x * 13,
-              y: end.y + normal.y * 13,
+            const upperEnd = {
+              x: end.x + normal.x * 11,
+              y: end.y + normal.y * 11,
             };
             const control = edgeControl(start, end, centroid, edge);
-            const roadControl = {
-              x: control.x + normal.x * 13,
-              y: control.y + normal.y * 13,
+            const upperControl = {
+              x: control.x + normal.x * 11,
+              y: control.y + normal.y * 11,
             };
-            const roadPath = edge.curved
-              ? `M ${roadStart.x} ${roadStart.y} Q ${roadControl.x} ${roadControl.y} ${roadEnd.x} ${roadEnd.y}`
-              : `M ${roadStart.x} ${roadStart.y} L ${roadEnd.x} ${roadEnd.y}`;
-            let angle =
-              (Math.atan2(end.y - start.y, end.x - start.x) * 180) / Math.PI;
-            if (angle > 90) angle -= 180;
-            if (angle < -90) angle += 180;
+            const lowerStart = {
+              x: start.x + normal.x * 35,
+              y: start.y + normal.y * 35,
+            };
+            const lowerEnd = {
+              x: end.x + normal.x * 35,
+              y: end.y + normal.y * 35,
+            };
+            const lowerControl = {
+              x: control.x + normal.x * 35,
+              y: control.y + normal.y * 35,
+            };
+            const upperPath = edge.curved
+              ? `M ${upperStart.x} ${upperStart.y} Q ${upperControl.x} ${upperControl.y} ${upperEnd.x} ${upperEnd.y}`
+              : `M ${upperStart.x} ${upperStart.y} L ${upperEnd.x} ${upperEnd.y}`;
+            const lowerPath = edge.curved
+              ? `M ${lowerStart.x} ${lowerStart.y} Q ${lowerControl.x} ${lowerControl.y} ${lowerEnd.x} ${lowerEnd.y}`
+              : `M ${lowerStart.x} ${lowerStart.y} L ${lowerEnd.x} ${lowerEnd.y}`;
+            const angle = readableEdgeAngle(start, end);
             const label = edge.streetName || edge.label || "RUA";
             const labelPoint = {
-              x: middle.x + normal.x * 28,
-              y: middle.y + normal.y * 28,
+              x: middle.x + normal.x * 19,
+              y: middle.y + normal.y * 19,
             };
             return (
               <g key={`${edge.fromVertex}-${edge.toVertex}-${index}`}>
                 <path
-                  d={roadPath}
+                  d={upperPath}
                   fill="none"
-                  stroke="#c9d1d7"
-                  strokeWidth="18"
+                  stroke="#111"
+                  strokeWidth="1.4"
                 />
                 <path
-                  d={roadPath}
+                  d={lowerPath}
                   fill="none"
-                  stroke="#53687b"
-                  strokeWidth="1.2"
+                  stroke="#111"
+                  strokeWidth="1.4"
                 />
                 <text
                   x={labelPoint.x}
@@ -221,21 +258,20 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
           })}
         <path
           d={plotPath}
-          fill="#dcecff"
-          fillOpacity="0.76"
+          fill={`url(#${dotPatternId})`}
           stroke="#172b3a"
           strokeWidth="2.2"
           strokeLinejoin="round"
         />
         {points.map((point, index) => (
           <g key={`plot-point-${index}`}>
-            <circle cx={point.x} cy={point.y} r="3" fill="#1769e0" />
+            <circle cx={point.x} cy={point.y} r="3.2" fill="#111" />
             <text
               x={point.x + 6}
               y={point.y - 5}
               fontSize="7"
               fontWeight="800"
-              fill="#1769e0"
+              fill="#111"
             >
               V{index + 1}
             </text>
@@ -249,6 +285,7 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
             x: (start.x + end.x) / 2,
             y: (start.y + end.y) / 2,
           };
+          const angle = readableEdgeAngle(start, end);
           return edge.measurement === null ? null : (
             <text
               key={`edge-measurement-${index}`}
@@ -261,8 +298,9 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
               paintOrder="stroke"
               stroke="white"
               strokeWidth="3"
+              transform={`rotate(${angle} ${middle.x} ${middle.y})`}
             >
-              {formatNumber(edge.measurement)} m
+              {formatMeasurement(edge.measurement)} m
             </text>
           );
         })}
