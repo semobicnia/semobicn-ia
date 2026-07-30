@@ -602,6 +602,15 @@ export function Workspace({
                   Abrir croqui original
                 </a>
               )}
+              {processStatus === "completed" && (
+                <a
+                  className="button secondary"
+                  href={`/api/pdf?processId=${initialProcess.id}`}
+                >
+                  <Download size={16} />
+                  Baixar PDF
+                </a>
+              )}
               <button
                 className="button primary"
                 disabled={loading}

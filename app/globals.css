@@ -1234,6 +1234,12 @@ button:disabled {
   text-decoration: none;
 }
 
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
 .table-action:hover {
   text-decoration: underline;
 }

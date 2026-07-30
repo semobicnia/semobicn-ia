@@ -5,6 +5,7 @@ import {
   Ban,
   CheckCircle2,
   Clock3,
+  Download,
   ExternalLink,
   FileClock,
   Search,
@@ -134,13 +135,24 @@ export function HistoryList({
                         </td>
                         <td>{formatDate(process.createdAt)}</td>
                         <td>
-                          <Link
-                            className="table-action"
-                            href={`/processos/${process.id}`}
-                          >
-                            Abrir
-                            <ExternalLink size={13} />
-                          </Link>
+                          <div className="table-actions">
+                            <Link
+                              className="table-action"
+                              href={`/processos/${process.id}`}
+                            >
+                              Abrir
+                              <ExternalLink size={13} />
+                            </Link>
+                            {process.status === "completed" && (
+                              <a
+                                className="table-action"
+                                href={`/api/pdf?processId=${process.id}`}
+                              >
+                                PDF
+                                <Download size={13} />
+                              </a>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
