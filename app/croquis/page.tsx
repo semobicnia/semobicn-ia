@@ -74,7 +74,7 @@ export default async function UrbanSketchesPage() {
                 </div>
                 <Link
                   className="button secondary compact"
-                  href={`/croquis/novo?processo=${process.id}`}
+                  href={`/croquis/${process.id}`}
                 >
                   Criar croqui
                 </Link>

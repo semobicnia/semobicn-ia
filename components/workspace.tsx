@@ -261,7 +261,7 @@ export function Workspace({
           "O desenho foi analisado, mas o processo não pôde ser criado.",
         );
       }
-      window.location.href = `/croquis/novo?processo=${result.processId}`;
+      window.location.href = `/croquis/${result.processId}`;
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -422,7 +422,7 @@ export function Workspace({
             <div className="process-toolbar-actions">
               <Link
                 className="button secondary"
-                href={`/croquis/novo?processo=${initialProcess.id}`}
+                href={`/croquis/${initialProcess.id}`}
               >
                 <DraftingCompass size={16} />
                 Revisar croqui urbano
@@ -907,7 +907,7 @@ export function Workspace({
                     onClick={() =>
                       initialProcess
                         ? (window.location.href =
-                            `/croquis/novo?processo=${initialProcess.id}`)
+                            `/croquis/${initialProcess.id}`)
                         : setStep("upload")
                     }
                   >

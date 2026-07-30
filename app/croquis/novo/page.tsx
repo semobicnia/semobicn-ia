@@ -1,11 +1,7 @@
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { CroquiWorkspace } from "@/components/croqui-workspace";
 import { getAuthenticatedSession } from "@/lib/auth";
-import {
-  getDefaultMunicipalSecretary,
-  getProcessDetail,
-  getUrbanSketch,
-} from "@/lib/database";
+import { getDefaultMunicipalSecretary } from "@/lib/database";
 import { sampleTopographicData } from "@/lib/topographic";
 
 const uuidPattern =
@@ -19,6 +15,9 @@ export default async function NewUrbanSketchPage({
   const session = await getAuthenticatedSession();
   if (!session || !session.user.role) redirect("/entrar");
   const { processo, demonstracao } = await searchParams;
+  if (processo && uuidPattern.test(processo)) {
+    redirect(`/croquis/${processo}`);
+  }
   const municipalSecretary = await getDefaultMunicipalSecretary();
   if (demonstracao === "1") {
     return (
@@ -33,32 +32,5 @@ export default async function NewUrbanSketchPage({
       />
     );
   }
-  if (!processo || !uuidPattern.test(processo)) redirect("/historico");
-
-  const process = await getProcessDetail({
-    processId: processo,
-    userId: session.user.id,
-    role: session.user.role,
-  });
-  if (!process) notFound();
-  const sketch = await getUrbanSketch(processo);
-
-  return (
-    <CroquiWorkspace
-      currentUser={{
-        name: session.user.name || "Servidor autorizado",
-        email: session.user.email || "",
-        role: session.user.role,
-      }}
-      processId={process.id}
-      data={process.data}
-      municipalSecretary={municipalSecretary}
-      initialSettings={sketch?.settings}
-      initialLocationImageUrl={
-        sketch?.locationImageAvailable
-          ? `/api/croquis/image?processo=${process.id}`
-          : undefined
-      }
-    />
-  );
+  redirect("/croquis");
 }
