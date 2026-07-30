@@ -119,7 +119,7 @@ Regras obrigatórias:
 - Em qualquer limite sem nome de vizinho ou rua, use exatamente "TERRENOS DE TERCEIROS".
 - Delimitação padrão: "Muro de alvenaria".
 - Benfeitorias padrão: Pavimentação asfáltica, Iluminação pública e Rede de abastecimento de água.
-- Se a área construída estiver ausente, marcada com traço ou zero, use 0 e deixe builtAreaInWords vazio.
+- Se a área construída estiver ausente, marcada com traço ou zero, use 0, deixe builtAreaInWords vazio e preencha propertyUse com "Sem edificação".
 - Escreva landAreaInWords e builtAreaInWords por extenso em português, incluindo "metros quadrados".
 - Escreva cada medida linear por extenso em measurementInWords, convertendo a parte decimal para centímetros.
 - Use a data que aparece no croqui, em YYYY-MM-DD. Quando não houver data, retorne string vazia; o sistema usará a data de criação.

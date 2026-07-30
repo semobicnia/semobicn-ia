@@ -957,6 +957,30 @@ button:disabled {
   line-height: 1.55;
 }
 
+.review-notes li {
+  margin-top: 8px;
+}
+
+.review-notes li span {
+  display: block;
+}
+
+.review-notes li button {
+  margin-top: 5px;
+  padding: 4px 8px;
+  border: 1px solid #d8bd7d;
+  border-radius: 6px;
+  color: #6f5c30;
+  background: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.review-notes li button:hover {
+  background: #fff3d6;
+}
+
 .sticky-actions {
   position: sticky;
   bottom: 0;

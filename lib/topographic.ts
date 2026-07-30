@@ -276,7 +276,44 @@ export function normalizeTopographicData(
   merged.bci = merged.bci?.trim() || "";
   merged.documentDate =
     merged.documentDate?.trim() || currentDocumentDate();
+  if (merged.builtArea === 0 && !merged.propertyUse.trim()) {
+    merged.propertyUse = "Sem edificação";
+  }
   return merged;
+}
+
+export function getActiveReviewNotes(data: TopographicData) {
+  return data.reviewNotes.filter((note) => {
+    const normalized = note
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+
+    if (
+      data.documentDate &&
+      (normalized.includes("nao contem data") ||
+        normalized.includes("data nao foi informada") ||
+        normalized.includes("sem data"))
+    ) {
+      return false;
+    }
+    if (
+      data.propertyUse.trim() &&
+      (normalized.includes("uso do imovel nao foi informado") ||
+        normalized.includes("uso do imovel ausente"))
+    ) {
+      return false;
+    }
+    if (
+      data.bci &&
+      normalized.includes("bci") &&
+      (normalized.includes("nao possui campo") ||
+        normalized.includes("sem campo correspondente"))
+    ) {
+      return false;
+    }
+    return true;
+  });
 }
 
 export function isTopographicData(value: unknown): value is TopographicData {

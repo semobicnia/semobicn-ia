@@ -30,6 +30,7 @@ import {
   defaultSexOptions,
   defaultTechnicalResponsible,
   defaultWorksInspector,
+  getActiveReviewNotes,
   sampleTopographicData,
   type SexCode,
   type SexOption,
@@ -299,6 +300,10 @@ export function Workspace({
         100,
     );
   }, [data]);
+  const activeReviewNotes = useMemo(
+    () => getActiveReviewNotes(data),
+    [data],
+  );
 
   function update<K extends keyof TopographicData>(
     key: K,
@@ -1053,12 +1058,27 @@ export function Workspace({
                   </div>
                 </Section>
 
-                {data.reviewNotes.length > 0 && (
+                {activeReviewNotes.length > 0 && (
                   <div className="review-notes">
                     <strong>Pontos sinalizados pela análise</strong>
                     <ul>
-                      {data.reviewNotes.map((note) => (
-                        <li key={note}>{note}</li>
+                      {activeReviewNotes.map((note) => (
+                        <li key={note}>
+                          <span>{note}</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              update(
+                                "reviewNotes",
+                                data.reviewNotes.filter(
+                                  (currentNote) => currentNote !== note,
+                                ),
+                              )
+                            }
+                          >
+                            Marcar como conferido
+                          </button>
+                        </li>
                       ))}
                     </ul>
                   </div>
