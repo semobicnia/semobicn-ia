@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { storePrivateSource } from "@/lib/cloudinary";
+import {
+  getSignedPrivateSourceUrl,
+  storePrivateSource,
+} from "@/lib/cloudinary";
 import { saveProcess } from "@/lib/database";
 import { extractTopographicData } from "@/lib/openai-extraction";
 import { getAuthenticatedSession } from "@/lib/auth";
@@ -24,17 +27,81 @@ export async function POST(request: Request) {
       );
     }
 
-    const form = await request.formData();
-    const file = form.get("file");
-    const supplementaryMessage = String(
-      form.get("supplementaryMessage") ?? "",
-    ).slice(0, 4000);
+    const contentType = request.headers.get("content-type") ?? "";
+    let filename = "";
+    let mimeType = "";
+    let bytes: Uint8Array;
+    let supplementaryMessage = "";
+    let stored: Awaited<ReturnType<typeof storePrivateSource>> = null;
 
-    if (!(file instanceof File) || !acceptedTypes.has(file.type)) {
-      return NextResponse.json(
-        { error: "Selecione um PDF ou uma foto válida (JPG, PNG ou WebP)." },
-        { status: 400 },
-      );
+    if (contentType.includes("application/json")) {
+      const body = (await request.json()) as {
+        filename?: unknown;
+        mimeType?: unknown;
+        supplementaryMessage?: unknown;
+        source?: {
+          publicId?: unknown;
+          url?: unknown;
+        };
+      };
+      filename = String(body.filename ?? "").slice(0, 255);
+      mimeType = String(body.mimeType ?? "");
+      supplementaryMessage = String(
+        body.supplementaryMessage ?? "",
+      ).slice(0, 4000);
+      const publicId = String(body.source?.publicId ?? "");
+
+      if (
+        !filename ||
+        !acceptedTypes.has(mimeType) ||
+        !publicId.startsWith("semobicn/croquis/")
+      ) {
+        return NextResponse.json(
+          { error: "Selecione um PDF ou uma foto válida (JPG, PNG ou WebP)." },
+          { status: 400 },
+        );
+      }
+
+      const signedUrl = getSignedPrivateSourceUrl(publicId);
+      if (!signedUrl) {
+        return NextResponse.json(
+          { error: "Não foi possível acessar o arquivo enviado." },
+          { status: 400 },
+        );
+      }
+
+      const sourceResponse = await fetch(signedUrl, { cache: "no-store" });
+      if (!sourceResponse.ok) {
+        return NextResponse.json(
+          { error: "Não foi possível acessar o arquivo enviado." },
+          { status: 400 },
+        );
+      }
+      bytes = new Uint8Array(await sourceResponse.arrayBuffer());
+      stored = { url: signedUrl, publicId };
+    } else {
+      const form = await request.formData();
+      const file = form.get("file");
+      supplementaryMessage = String(
+        form.get("supplementaryMessage") ?? "",
+      ).slice(0, 4000);
+
+      if (!(file instanceof File) || !acceptedTypes.has(file.type)) {
+        return NextResponse.json(
+          { error: "Selecione um PDF ou uma foto válida (JPG, PNG ou WebP)." },
+          { status: 400 },
+        );
+      }
+
+      filename = file.name;
+      mimeType = file.type;
+      bytes = new Uint8Array(await file.arrayBuffer());
+
+      try {
+        stored = await storePrivateSource(file, bytes);
+      } catch {
+        stored = null;
+      }
     }
 
     const maxSize = Number(
@@ -42,25 +109,21 @@ export async function POST(request: Request) {
         process.env.MAX_PDF_SIZE_BYTES ||
         10_485_760,
     );
-    if (file.size > maxSize) {
+    if (bytes.byteLength > maxSize) {
       return NextResponse.json(
         { error: "O arquivo ultrapassa o limite de 10 MB." },
         { status: 413 },
       );
     }
 
-    const bytes = new Uint8Array(await file.arrayBuffer());
     const data = await extractTopographicData(
-      file.name,
-      file.type,
+      filename,
+      mimeType,
       bytes,
       supplementaryMessage,
     );
 
-    let stored: Awaited<ReturnType<typeof storePrivateSource>> = null;
-    try {
-      stored = await storePrivateSource(file, bytes);
-    } catch {
+    if (!stored) {
       data.reviewNotes.push(
         "O croqui foi analisado, mas não foi armazenado no Cloudinary.",
       );

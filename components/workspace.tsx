@@ -39,6 +39,29 @@ import {
 
 type Step = "upload" | "review" | "document";
 
+const MAX_SOURCE_FILE_SIZE_BYTES = 10_485_760;
+
+async function readApiResponse<T>(
+  response: Response,
+  fallbackMessage: string,
+): Promise<T> {
+  const text = await response.text();
+  if (text) {
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      // A infraestrutura pode responder em texto ou HTML antes da API.
+    }
+  }
+
+  if (response.status === 413 || /request entity|payload too large/i.test(text)) {
+    throw new Error(
+      "O arquivo é grande demais para o envio. Selecione um arquivo de até 10 MB.",
+    );
+  }
+  throw new Error(fallbackMessage);
+}
+
 const steps: Array<{ id: Step; label: string; hint: string }> = [
   { id: "upload", label: "Desenho original", hint: "Enviar foto ou PDF" },
   { id: "review", label: "Croqui urbano", hint: "Revisar e concluir" },
@@ -244,15 +267,82 @@ export function Workspace({
     setLoading(true);
     setError("");
     try {
-      const body = new FormData();
-      body.append("file", file);
-      body.append("supplementaryMessage", supplementaryMessage);
-      const response = await fetch("/api/analyze", { method: "POST", body });
-      const result = (await response.json()) as {
+      if (file.size > MAX_SOURCE_FILE_SIZE_BYTES) {
+        throw new Error("O arquivo ultrapassa o limite de 10 MB.");
+      }
+
+      const signatureResponse = await fetch("/api/uploads/source", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: file.name }),
+      });
+      const signature = await readApiResponse<{
+        cloudName?: string;
+        apiKey?: string;
+        timestamp?: string;
+        publicId?: string;
+        type?: string;
+        signature?: string;
+        error?: string;
+      }>(
+        signatureResponse,
+        "Não foi possível preparar o envio do arquivo.",
+      );
+      if (
+        !signatureResponse.ok ||
+        !signature.cloudName ||
+        !signature.apiKey ||
+        !signature.timestamp ||
+        !signature.publicId ||
+        !signature.type ||
+        !signature.signature
+      ) {
+        throw new Error(
+          signature.error || "Não foi possível preparar o envio do arquivo.",
+        );
+      }
+
+      const uploadBody = new FormData();
+      uploadBody.append("file", file);
+      uploadBody.append("api_key", signature.apiKey);
+      uploadBody.append("timestamp", signature.timestamp);
+      uploadBody.append("public_id", signature.publicId);
+      uploadBody.append("type", signature.type);
+      uploadBody.append("signature", signature.signature);
+      const uploadResponse = await fetch(
+        `https://api.cloudinary.com/v1_1/${encodeURIComponent(signature.cloudName)}/raw/upload`,
+        { method: "POST", body: uploadBody },
+      );
+      const uploaded = await readApiResponse<{
+        secure_url?: string;
+        public_id?: string;
+        error?: { message?: string };
+      }>(uploadResponse, "Não foi possível armazenar o arquivo enviado.");
+      if (!uploadResponse.ok || !uploaded.secure_url || !uploaded.public_id) {
+        throw new Error(
+          uploaded.error?.message ||
+            "Não foi possível armazenar o arquivo enviado.",
+        );
+      }
+
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          mimeType: file.type,
+          supplementaryMessage,
+          source: {
+            url: uploaded.secure_url,
+            publicId: uploaded.public_id,
+          },
+        }),
+      });
+      const result = await readApiResponse<{
         data?: TopographicData;
         processId?: string | null;
         error?: string;
-      };
+      }>(response, "Não foi possível analisar o croqui.");
       if (!response.ok || !result.data) {
         throw new Error(result.error || "Não foi possível analisar o croqui.");
       }
@@ -496,8 +586,14 @@ export function Workspace({
                     type="file"
                     accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp"
                     onChange={(event) => {
-                      setFile(event.target.files?.[0] ?? null);
-                      setError("");
+                      const selectedFile = event.target.files?.[0] ?? null;
+                      setFile(selectedFile);
+                      setError(
+                        selectedFile &&
+                          selectedFile.size > MAX_SOURCE_FILE_SIZE_BYTES
+                          ? "O arquivo ultrapassa o limite de 10 MB."
+                          : "",
+                      );
                     }}
                   />
                   {file ? (

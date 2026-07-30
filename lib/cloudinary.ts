@@ -1,28 +1,62 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 type StoredFile = {
   url: string;
   publicId: string;
 };
 
+export type PrivateSourceUploadSignature = {
+  cloudName: string;
+  apiKey: string;
+  timestamp: string;
+  publicId: string;
+  type: "authenticated";
+  signature: string;
+};
+
 export type StoredImage = StoredFile & {
   format: string;
 };
 
-export async function storePrivateSource(
-  file: File,
-  bytes: Uint8Array,
-): Promise<StoredFile | null> {
+export function createPrivateSourceUploadSignature():
+  | PrivateSourceUploadSignature
+  | null;
+export function createPrivateSourceUploadSignature(
+  filename: string,
+): PrivateSourceUploadSignature | null;
+export function createPrivateSourceUploadSignature(
+  filename = "",
+): PrivateSourceUploadSignature | null {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const apiKey = process.env.CLOUDINARY_API_KEY;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
   if (!cloudName || !apiKey || !apiSecret) return null;
 
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const folder = "semobicn/croquis";
-  const type = "authenticated";
-  const signatureBase = `folder=${folder}&timestamp=${timestamp}&type=${type}${apiSecret}`;
+  const extension =
+    filename.toLowerCase().match(/\.(pdf|jpe?g|png|webp)$/)?.[0] ?? "";
+  const publicId = `semobicn/croquis/${randomUUID()}${extension}`;
+  const type = "authenticated" as const;
+  const signatureBase = `public_id=${publicId}&timestamp=${timestamp}&type=${type}${apiSecret}`;
   const signature = createHash("sha1").update(signatureBase).digest("hex");
+
+  return {
+    cloudName,
+    apiKey,
+    timestamp,
+    publicId,
+    type,
+    signature,
+  };
+}
+
+export async function storePrivateSource(
+  file: File,
+  bytes: Uint8Array,
+): Promise<StoredFile | null> {
+  const upload = createPrivateSourceUploadSignature(file.name);
+  if (!upload) return null;
+
   const form = new FormData();
   const uploadBytes = Uint8Array.from(bytes);
   form.append(
@@ -30,14 +64,14 @@ export async function storePrivateSource(
     new Blob([uploadBytes.buffer], { type: file.type }),
     file.name,
   );
-  form.append("api_key", apiKey);
-  form.append("timestamp", timestamp);
-  form.append("folder", folder);
-  form.append("type", type);
-  form.append("signature", signature);
+  form.append("api_key", upload.apiKey);
+  form.append("timestamp", upload.timestamp);
+  form.append("public_id", upload.publicId);
+  form.append("type", upload.type);
+  form.append("signature", upload.signature);
 
   const response = await fetch(
-    `https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`,
+    `https://api.cloudinary.com/v1_1/${upload.cloudName}/raw/upload`,
     { method: "POST", body: form },
   );
   if (!response.ok) {
