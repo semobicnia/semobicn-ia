@@ -818,6 +818,11 @@ export function Workspace({
                       onChange={(value) => update("lot", value)}
                     />
                     <Field
+                      label="BCI"
+                      value={data.bci}
+                      onChange={(value) => update("bci", value)}
+                    />
+                    <Field
                       label="Data do croqui"
                       type="date"
                       value={data.documentDate}

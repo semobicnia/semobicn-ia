@@ -523,10 +523,15 @@ export function CroquiWorkspace({
     setMessage("");
     try {
       if (finalize) {
+        const documentData = {
+          ...effectiveData,
+          bci: settings.bci.trim(),
+          cpf: settings.claimantDocument.trim() || effectiveData.cpf,
+        };
         const processResponse = await fetch(`/api/processes/${processId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: effectiveData, status: "review" }),
+          body: JSON.stringify({ data: documentData, status: "review" }),
         });
         const processResult = (await processResponse.json()) as {
           error?: string;

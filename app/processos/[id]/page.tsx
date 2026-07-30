@@ -37,7 +37,13 @@ export default async function ProcessPage({
       initialProcess={{
         id: process.id,
         status: process.status,
-        data: process.data,
+        data: {
+          ...process.data,
+          bci: sketch.settings.bci || process.data.bci,
+          cpf:
+            sketch.settings.claimantDocument ||
+            process.data.cpf,
+        },
         sourceAvailable: process.sourceAvailable,
         events: process.events,
       }}
