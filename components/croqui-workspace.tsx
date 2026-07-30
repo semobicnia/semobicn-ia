@@ -115,6 +115,47 @@ function wrapText(text: string, maxLength: number, maxLines: number) {
 
 type DrawingPoint = { x: number; y: number };
 
+const streetEdges = {
+  upper: {
+    start: { x: 8, y: 520 },
+    end: { x: 190, y: 220 },
+  },
+  lower: {
+    start: { x: 78, y: 590 },
+    end: { x: 250, y: 300 },
+  },
+};
+
+const streetLabelPosition = (() => {
+  const upperCenter = {
+    x: (streetEdges.upper.start.x + streetEdges.upper.end.x) / 2,
+    y: (streetEdges.upper.start.y + streetEdges.upper.end.y) / 2,
+  };
+  const lowerCenter = {
+    x: (streetEdges.lower.start.x + streetEdges.lower.end.x) / 2,
+    y: (streetEdges.lower.start.y + streetEdges.lower.end.y) / 2,
+  };
+  const centerLineStart = {
+    x: (streetEdges.upper.start.x + streetEdges.lower.start.x) / 2,
+    y: (streetEdges.upper.start.y + streetEdges.lower.start.y) / 2,
+  };
+  const centerLineEnd = {
+    x: (streetEdges.upper.end.x + streetEdges.lower.end.x) / 2,
+    y: (streetEdges.upper.end.y + streetEdges.lower.end.y) / 2,
+  };
+  return {
+    x: (upperCenter.x + lowerCenter.x) / 2,
+    y: (upperCenter.y + lowerCenter.y) / 2,
+    angle:
+      (Math.atan2(
+        centerLineEnd.y - centerLineStart.y,
+        centerLineEnd.x - centerLineStart.x,
+      ) *
+        180) /
+      Math.PI,
+  };
+})();
+
 const sketchBoundaryLabels: Record<BoundarySide, string> = {
   front: "Frente / rua",
   right: "Flanco direito",
@@ -138,6 +179,13 @@ function edgeLabel(
     y: (start.y + end.y) / 2 + (dx / length) * offset,
     angle,
   };
+}
+
+function streetLabelFontSize(label: string) {
+  if (label.length > 38) return 6.6;
+  if (label.length > 30) return 7.2;
+  if (label.length > 22) return 8;
+  return 9;
 }
 
 function formatDocumentDate(value: string) {
@@ -215,10 +263,13 @@ export function CroquiWorkspace({
   const rightMeasurementLabel = edgeLabel(backUpper, frontUpper, 12);
   const leftMeasurementLabel = edgeLabel(frontLower, backLower, 12);
   const backMeasurementLabel = edgeLabel(backLower, backUpper, 14);
-  const frontConfrontantLabel = edgeLabel(frontUpper, frontLower, 48);
   const rightConfrontantLabel = edgeLabel(backUpper, frontUpper, 37);
   const leftConfrontantLabel = edgeLabel(frontLower, backLower, 39);
   const backConfrontantLabel = edgeLabel(backLower, backUpper, 47);
+  const frontConfrontant = getSketchConfrontant(
+    effectiveData,
+    "front",
+  ).toUpperCase();
   const plotCenter = geometry.points.reduce(
     (center, point) => ({
       x: center.x + point.x / 4,
@@ -917,17 +968,32 @@ export function CroquiWorkspace({
               <path d="M0 -45 L0 10 L19 23 Z" fill="white" stroke="#111" strokeWidth="1" />
             </g>
 
-            <line x1="8" y1="520" x2="190" y2="220" stroke="#111" strokeWidth="1.6" />
-            <line x1="78" y1="590" x2="250" y2="300" stroke="#111" strokeWidth="1.6" />
+            <line
+              x1={streetEdges.upper.start.x}
+              y1={streetEdges.upper.start.y}
+              x2={streetEdges.upper.end.x}
+              y2={streetEdges.upper.end.y}
+              stroke="#111"
+              strokeWidth="1.6"
+            />
+            <line
+              x1={streetEdges.lower.start.x}
+              y1={streetEdges.lower.start.y}
+              x2={streetEdges.lower.end.x}
+              y2={streetEdges.lower.end.y}
+              stroke="#111"
+              strokeWidth="1.6"
+            />
             <text
-              x={frontConfrontantLabel.x - 95}
-              y={frontConfrontantLabel.y + 75}
+              x={streetLabelPosition.x}
+              y={streetLabelPosition.y}
               textAnchor="middle"
-              fontSize="9"
+              dominantBaseline="middle"
+              fontSize={streetLabelFontSize(frontConfrontant)}
               fontWeight="700"
-              transform={`rotate(-59 ${frontConfrontantLabel.x - 95} ${frontConfrontantLabel.y + 75})`}
+              transform={`rotate(${streetLabelPosition.angle} ${streetLabelPosition.x} ${streetLabelPosition.y})`}
             >
-              {getSketchConfrontant(effectiveData, "front").toUpperCase()}
+              {frontConfrontant}
             </text>
 
             <polygon
