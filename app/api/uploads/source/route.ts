@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedSession } from "@/lib/auth";
-import { createPrivateSourceUploadSignature } from "@/lib/cloudinary";
+import {
+  createPrivateSourceUploadSignature,
+  createPrivateTestUploadSignature,
+} from "@/lib/cloudinary";
 
 export const runtime = "nodejs";
 
@@ -15,6 +18,7 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => null)) as {
     filename?: unknown;
+    purpose?: unknown;
   } | null;
   const filename = String(body?.filename ?? "").slice(0, 255);
   if (!filename) {
@@ -24,7 +28,16 @@ export async function POST(request: Request) {
     );
   }
 
-  const upload = createPrivateSourceUploadSignature(filename);
+  const testOnly = body?.purpose === "test";
+  if (testOnly && session.user.role !== "admin") {
+    return NextResponse.json(
+      { error: "Apenas administradores podem preparar arquivos de teste." },
+      { status: 403 },
+    );
+  }
+  const upload = testOnly
+    ? createPrivateTestUploadSignature(filename)
+    : createPrivateSourceUploadSignature(filename);
   if (!upload) {
     return NextResponse.json(
       { error: "O armazenamento de arquivos ainda não foi configurado." },

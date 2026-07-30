@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedSession } from "@/lib/auth";
+import {
+  deletePrivateSource,
+  getSignedPrivateSourceUrl,
+} from "@/lib/cloudinary";
 import { extractTopographicData } from "@/lib/openai-extraction";
 
 export const runtime = "nodejs";
@@ -11,9 +15,10 @@ const acceptedTypes = new Set([
   "image/png",
   "image/webp",
 ]);
-const maxTestFileSize = 3_800_000;
+const maxTestFileSize = 10_485_760;
 
 export async function POST(request: Request) {
+  let temporaryPublicId = "";
   try {
     const session = await getAuthenticatedSession();
     if (!session || session.user.role !== "admin") {
@@ -23,23 +28,71 @@ export async function POST(request: Request) {
       );
     }
 
-    const form = await request.formData();
-    const file = form.get("file");
-    const supplementaryMessage = String(
-      form.get("supplementaryMessage") ?? "",
-    ).slice(0, 4000);
+    const contentType = request.headers.get("content-type") ?? "";
+    let filename = "";
+    let mimeType = "";
+    let bytes: Uint8Array;
+    let supplementaryMessage = "";
 
-    if (!(file instanceof File) || !acceptedTypes.has(file.type)) {
-      return NextResponse.json(
-        { error: "Selecione um PDF ou uma imagem válida." },
-        { status: 400 },
-      );
+    if (contentType.includes("application/json")) {
+      const body = (await request.json()) as {
+        filename?: unknown;
+        mimeType?: unknown;
+        supplementaryMessage?: unknown;
+        source?: { publicId?: unknown };
+      };
+      filename = String(body.filename ?? "").slice(0, 255);
+      mimeType = String(body.mimeType ?? "");
+      supplementaryMessage = String(
+        body.supplementaryMessage ?? "",
+      ).slice(0, 4000);
+      temporaryPublicId = String(body.source?.publicId ?? "");
+      if (
+        !filename ||
+        !acceptedTypes.has(mimeType) ||
+        !temporaryPublicId.startsWith("semobicn/tests/")
+      ) {
+        return NextResponse.json(
+          { error: "Selecione um PDF ou uma imagem válida." },
+          { status: 400 },
+        );
+      }
+      const signedUrl = getSignedPrivateSourceUrl(temporaryPublicId);
+      if (!signedUrl) {
+        return NextResponse.json(
+          { error: "Não foi possível acessar o arquivo temporário." },
+          { status: 400 },
+        );
+      }
+      const sourceResponse = await fetch(signedUrl, { cache: "no-store" });
+      if (!sourceResponse.ok) {
+        return NextResponse.json(
+          { error: "Não foi possível acessar o arquivo temporário." },
+          { status: 400 },
+        );
+      }
+      bytes = new Uint8Array(await sourceResponse.arrayBuffer());
+    } else {
+      const form = await request.formData();
+      const file = form.get("file");
+      supplementaryMessage = String(
+        form.get("supplementaryMessage") ?? "",
+      ).slice(0, 4000);
+      if (!(file instanceof File) || !acceptedTypes.has(file.type)) {
+        return NextResponse.json(
+          { error: "Selecione um PDF ou uma imagem válida." },
+          { status: 400 },
+        );
+      }
+      filename = file.name;
+      mimeType = file.type;
+      bytes = new Uint8Array(await file.arrayBuffer());
     }
-    if (file.size > maxTestFileSize) {
+
+    if (bytes.byteLength > maxTestFileSize) {
       return NextResponse.json(
         {
-          error:
-            "No laboratório, cada arquivo deve ter menos de 3,8 MB.",
+          error: "No laboratório, cada arquivo deve ter no máximo 10 MB.",
         },
         { status: 413 },
       );
@@ -47,9 +100,9 @@ export async function POST(request: Request) {
 
     const startedAt = Date.now();
     const data = await extractTopographicData(
-      file.name,
-      file.type,
-      new Uint8Array(await file.arrayBuffer()),
+      filename,
+      mimeType,
+      bytes,
       supplementaryMessage,
     );
 
@@ -70,5 +123,9 @@ export async function POST(request: Request) {
         ? error.message
         : "Não foi possível executar o teste.";
     return NextResponse.json({ error: message }, { status: 500 });
+  } finally {
+    if (temporaryPublicId.startsWith("semobicn/tests/")) {
+      await deletePrivateSource(temporaryPublicId).catch(() => false);
+    }
   }
 }

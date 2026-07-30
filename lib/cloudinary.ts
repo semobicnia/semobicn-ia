@@ -27,6 +27,19 @@ export function createPrivateSourceUploadSignature(
 export function createPrivateSourceUploadSignature(
   filename = "",
 ): PrivateSourceUploadSignature | null {
+  return createPrivateUploadSignature(filename, "semobicn/croquis");
+}
+
+export function createPrivateTestUploadSignature(
+  filename = "",
+): PrivateSourceUploadSignature | null {
+  return createPrivateUploadSignature(filename, "semobicn/tests");
+}
+
+function createPrivateUploadSignature(
+  filename: string,
+  folder: string,
+): PrivateSourceUploadSignature | null {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const apiKey = process.env.CLOUDINARY_API_KEY;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
@@ -35,7 +48,7 @@ export function createPrivateSourceUploadSignature(
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const extension =
     filename.toLowerCase().match(/\.(pdf|jpe?g|png|webp)$/)?.[0] ?? "";
-  const publicId = `semobicn/croquis/${randomUUID()}${extension}`;
+  const publicId = `${folder}/${randomUUID()}${extension}`;
   const type = "authenticated" as const;
   const signatureBase = `public_id=${publicId}&timestamp=${timestamp}&type=${type}${apiSecret}`;
   const signature = createHash("sha1").update(signatureBase).digest("hex");
@@ -48,6 +61,30 @@ export function createPrivateSourceUploadSignature(
     type,
     signature,
   };
+}
+
+export async function deletePrivateSource(publicId: string) {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+  if (!cloudName || !apiKey || !apiSecret || !publicId) return false;
+
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const type = "authenticated";
+  const signatureBase = `public_id=${publicId}&timestamp=${timestamp}&type=${type}${apiSecret}`;
+  const signature = createHash("sha1").update(signatureBase).digest("hex");
+  const form = new FormData();
+  form.append("public_id", publicId);
+  form.append("api_key", apiKey);
+  form.append("timestamp", timestamp);
+  form.append("type", type);
+  form.append("signature", signature);
+
+  const response = await fetch(
+    `https://api.cloudinary.com/v1_1/${cloudName}/raw/destroy`,
+    { method: "POST", body: form },
+  );
+  return response.ok;
 }
 
 export async function storePrivateSource(

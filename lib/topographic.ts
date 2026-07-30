@@ -29,6 +29,37 @@ export type Boundary = {
   measurementInWords: string;
 };
 
+export type PlotShapeType =
+  | "square"
+  | "rectangle"
+  | "trapezoid"
+  | "irregular"
+  | "unknown";
+
+export type PlotVertex = {
+  x: number;
+  y: number;
+};
+
+export type PlotEdge = {
+  fromVertex: number;
+  toVertex: number;
+  label: string;
+  measurement: number | null;
+  isStreet: boolean;
+  streetName: string;
+  curved: boolean;
+  curveBulge: number;
+};
+
+export type PlotGeometry = {
+  shapeType: PlotShapeType;
+  vertices: PlotVertex[];
+  edges: PlotEdge[];
+  confidence: number;
+  reviewNotes: string[];
+};
+
 export type TopographicData = {
   bci: string;
   claimantName: string;
@@ -51,6 +82,7 @@ export type TopographicData = {
   improvements: string[];
   documentDate: string;
   boundaries: Boundary[];
+  plotGeometry: PlotGeometry;
   confidence: number;
   reviewNotes: string[];
   technicalResponsible: StaffMember;
@@ -142,6 +174,13 @@ export const initialTopographicData: TopographicData = {
       measurementInWords: "",
     },
   ],
+  plotGeometry: {
+    shapeType: "unknown",
+    vertices: [],
+    edges: [],
+    confidence: 0,
+    reviewNotes: [],
+  },
   confidence: 0,
   reviewNotes: [],
   technicalResponsible: defaultTechnicalResponsible,
@@ -199,6 +238,59 @@ export const sampleTopographicData: TopographicData = {
       measurementInWords: "cinco metros e oitenta centímetros",
     },
   ],
+  plotGeometry: {
+    shapeType: "trapezoid",
+    vertices: [
+      { x: 190, y: 180 },
+      { x: 340, y: 170 },
+      { x: 390, y: 790 },
+      { x: 230, y: 800 },
+    ],
+    edges: [
+      {
+        fromVertex: 0,
+        toVertex: 1,
+        label: "RUA DEUSADETE BARROS",
+        measurement: 6.45,
+        isStreet: true,
+        streetName: "RUA DEUSADETE BARROS",
+        curved: false,
+        curveBulge: 0,
+      },
+      {
+        fromVertex: 1,
+        toVertex: 2,
+        label: "ANTONIO JOSÉ ALVES",
+        measurement: 22.4,
+        isStreet: false,
+        streetName: "",
+        curved: false,
+        curveBulge: 0,
+      },
+      {
+        fromVertex: 2,
+        toVertex: 3,
+        label: "TERRENOS DE TERCEIROS",
+        measurement: 5.8,
+        isStreet: false,
+        streetName: "",
+        curved: false,
+        curveBulge: 0,
+      },
+      {
+        fromVertex: 3,
+        toVertex: 0,
+        label: "MARIA DAS GRAÇAS DA SILVA",
+        measurement: 22.41,
+        isStreet: false,
+        streetName: "",
+        curved: false,
+        curveBulge: 0,
+      },
+    ],
+    confidence: 0.9,
+    reviewNotes: [],
+  },
   confidence: 0.94,
   reviewNotes: [
     "O limite de fundo não continha nome de vizinho ou rua e foi padronizado como TERRENOS DE TERCEIROS.",
@@ -225,6 +317,80 @@ function normalizeStaffMember(
   };
 }
 
+function normalizePlotGeometry(value: Partial<PlotGeometry> | undefined) {
+  const vertices = Array.isArray(value?.vertices)
+    ? value.vertices.slice(0, 12).flatMap((vertex) => {
+        if (
+          !vertex ||
+          !Number.isFinite(vertex.x) ||
+          !Number.isFinite(vertex.y)
+        ) {
+          return [];
+        }
+        return [{
+          x: Math.max(0, Math.min(1000, vertex.x)),
+          y: Math.max(0, Math.min(1000, vertex.y)),
+        }];
+      })
+    : [];
+  const validShapeTypes = new Set<PlotShapeType>([
+    "square",
+    "rectangle",
+    "trapezoid",
+    "irregular",
+    "unknown",
+  ]);
+  const edges = Array.isArray(value?.edges)
+    ? value.edges.slice(0, 12).flatMap((edge) => {
+        if (
+          !edge ||
+          !Number.isInteger(edge.fromVertex) ||
+          !Number.isInteger(edge.toVertex) ||
+          edge.fromVertex < 0 ||
+          edge.toVertex < 0 ||
+          edge.fromVertex >= vertices.length ||
+          edge.toVertex >= vertices.length ||
+          edge.fromVertex === edge.toVertex
+        ) {
+          return [];
+        }
+        return [{
+          fromVertex: edge.fromVertex,
+          toVertex: edge.toVertex,
+          label: edge.label?.trim() || "",
+          measurement:
+            typeof edge.measurement === "number" &&
+            Number.isFinite(edge.measurement)
+              ? edge.measurement
+              : null,
+          isStreet: Boolean(edge.isStreet),
+          streetName: edge.streetName?.trim() || "",
+          curved: Boolean(edge.curved),
+          curveBulge:
+            typeof edge.curveBulge === "number" &&
+            Number.isFinite(edge.curveBulge)
+              ? Math.max(-1, Math.min(1, edge.curveBulge))
+              : 0,
+        }];
+      })
+    : [];
+
+  return {
+    shapeType:
+      value?.shapeType && validShapeTypes.has(value.shapeType)
+        ? value.shapeType
+        : "unknown",
+    vertices,
+    edges,
+    confidence:
+      typeof value?.confidence === "number" &&
+      Number.isFinite(value.confidence)
+        ? Math.max(0, Math.min(1, value.confidence))
+        : 0,
+    reviewNotes: value?.reviewNotes?.filter(Boolean).slice(0, 20) ?? [],
+  } satisfies PlotGeometry;
+}
+
 export function normalizeTopographicData(
   data: Partial<TopographicData>,
 ): TopographicData {
@@ -246,6 +412,7 @@ export function normalizeTopographicData(
         measurementInWords: found?.measurementInWords?.trim() || "",
       };
     }),
+    plotGeometry: normalizePlotGeometry(data.plotGeometry),
     improvements:
       data.improvements?.filter(Boolean) ??
       initialTopographicData.improvements,

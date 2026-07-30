@@ -2085,6 +2085,97 @@ button:disabled {
   font-weight: 800;
 }
 
+.test-sketch {
+  display: grid;
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #f7fafc;
+}
+
+.test-visual-comparison {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.test-source-preview {
+  min-height: 280px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #f7fafc;
+}
+
+.test-source-preview > strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.test-source-preview object,
+.test-source-preview img {
+  width: 100%;
+  height: 100%;
+  min-height: 245px;
+  border: 1px solid #dce3e8;
+  border-radius: 10px;
+  background: white;
+  object-fit: contain;
+}
+
+.test-sketch-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.test-sketch-heading strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.test-sketch-heading span,
+.test-sketch > small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.test-sketch svg {
+  display: block;
+  width: 100%;
+  max-height: 330px;
+  border: 1px solid #dce3e8;
+  border-radius: 10px;
+  background: white;
+}
+
+.test-sketch-empty {
+  min-height: 120px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 18px;
+  border: 1px dashed #d5a4a0;
+  border-radius: 11px;
+  color: #8f403b;
+  background: #fff8f7;
+  font-size: 10px;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .test-visual-comparison {
+    grid-template-columns: 1fr;
+  }
+}
+
 .test-result-card footer {
   display: grid;
   gap: 7px;

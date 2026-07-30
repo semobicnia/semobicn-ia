@@ -46,6 +46,68 @@ const schema = {
         required: ["side", "label", "measurement", "measurementInWords"],
       },
     },
+    plotGeometry: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        shapeType: {
+          type: "string",
+          enum: ["square", "rectangle", "trapezoid", "irregular", "unknown"],
+        },
+        vertices: {
+          type: "array",
+          minItems: 3,
+          maxItems: 12,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              x: { type: "number", minimum: 0, maximum: 1000 },
+              y: { type: "number", minimum: 0, maximum: 1000 },
+            },
+            required: ["x", "y"],
+          },
+        },
+        edges: {
+          type: "array",
+          minItems: 3,
+          maxItems: 12,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              fromVertex: { type: "integer", minimum: 0, maximum: 11 },
+              toVertex: { type: "integer", minimum: 0, maximum: 11 },
+              label: { type: "string" },
+              measurement: { type: ["number", "null"] },
+              isStreet: { type: "boolean" },
+              streetName: { type: "string" },
+              curved: { type: "boolean" },
+              curveBulge: { type: "number", minimum: -1, maximum: 1 },
+            },
+            required: [
+              "fromVertex",
+              "toVertex",
+              "label",
+              "measurement",
+              "isStreet",
+              "streetName",
+              "curved",
+              "curveBulge",
+            ],
+          },
+        },
+        confidence: { type: "number", minimum: 0, maximum: 1 },
+        reviewNotes: { type: "array", items: { type: "string" } },
+      },
+      required: [
+        "shapeType",
+        "vertices",
+        "edges",
+        "confidence",
+        "reviewNotes",
+      ],
+    },
     confidence: { type: "number", minimum: 0, maximum: 1 },
     reviewNotes: { type: "array", items: { type: "string" } },
   },
@@ -71,6 +133,7 @@ const schema = {
     "improvements",
     "documentDate",
     "boundaries",
+    "plotGeometry",
     "confidence",
     "reviewNotes",
   ],
@@ -124,6 +187,13 @@ Regras obrigatórias:
 - Escreva cada medida linear por extenso em measurementInWords, convertendo a parte decimal para centímetros.
 - Use a data que aparece no croqui, em YYYY-MM-DD. Quando não houver data, retorne string vazia; o sistema usará a data de criação.
 - Retorne exatamente quatro limites: front, right, left e back.
+- Além dos quatro limites textuais, reconstrua a geometria visual em plotGeometry. Ela deve representar o contorno real do terreno, inclusive quando possuir 3, 5 ou mais faces.
+- Em plotGeometry.vertices, informe os vértices do terreno em ordem horária, usando coordenadas normalizadas de 0 a 1000 conforme a posição no desenho original (x cresce para a direita e y para baixo). Não inclua vértices de cotas, setas ou construções.
+- Em plotGeometry.edges, crie uma aresta para cada par consecutivo de vértices, inclusive a última ligada à primeira. Associe a cada face seu confrontante, medida e eventual rua.
+- Marque isStreet=true em toda face que confrontar com rua, avenida, travessa ou estrada. Preserve o nome em streetName e a posição correta em relação ao terreno.
+- Quando a borda do terreno ou a rua for curva, marque curved=true. Use curveBulge entre -1 e 1 para indicar a curvatura aproximada: valor positivo curva para o interior do polígono visual e negativo para o exterior; use 0 em linha reta.
+- Classifique shapeType como square, rectangle, trapezoid ou irregular. Use irregular para qualquer terreno com mais de quatro faces. Só use unknown quando o contorno estiver realmente ilegível.
+- A geometria é uma representação aproximada para revisão humana. Registre em plotGeometry.reviewNotes qualquer vértice, rua ou curvatura duvidosa.
 
 Mensagem complementar fornecida pelo servidor:
 ${supplementaryMessage.trim() || "Nenhuma."}`;
