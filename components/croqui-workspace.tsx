@@ -23,11 +23,10 @@ import { AppHeader, type HeaderUser } from "./app-header";
 import {
   applySketchDataOverrides,
   buildSketchGeometry,
+  createEmptyVertexOffsets,
   createSketchDataOverrides,
   defaultUrbanSketchSettings,
   formatMeasurement,
-  getSketchConfrontant,
-  getSketchMeasurements,
   type UrbanSketchBoundaryOverride,
   type UrbanSketchDataOverrides,
   type UrbanSketchSettings,
@@ -116,47 +115,6 @@ function wrapText(text: string, maxLength: number, maxLines: number) {
 
 type DrawingPoint = { x: number; y: number };
 
-const streetEdges = {
-  upper: {
-    start: { x: 8, y: 520 },
-    end: { x: 190, y: 220 },
-  },
-  lower: {
-    start: { x: 78, y: 590 },
-    end: { x: 250, y: 300 },
-  },
-};
-
-const streetLabelPosition = (() => {
-  const upperCenter = {
-    x: (streetEdges.upper.start.x + streetEdges.upper.end.x) / 2,
-    y: (streetEdges.upper.start.y + streetEdges.upper.end.y) / 2,
-  };
-  const lowerCenter = {
-    x: (streetEdges.lower.start.x + streetEdges.lower.end.x) / 2,
-    y: (streetEdges.lower.start.y + streetEdges.lower.end.y) / 2,
-  };
-  const centerLineStart = {
-    x: (streetEdges.upper.start.x + streetEdges.lower.start.x) / 2,
-    y: (streetEdges.upper.start.y + streetEdges.lower.start.y) / 2,
-  };
-  const centerLineEnd = {
-    x: (streetEdges.upper.end.x + streetEdges.lower.end.x) / 2,
-    y: (streetEdges.upper.end.y + streetEdges.lower.end.y) / 2,
-  };
-  return {
-    x: (upperCenter.x + lowerCenter.x) / 2,
-    y: (upperCenter.y + lowerCenter.y) / 2,
-    angle:
-      (Math.atan2(
-        centerLineEnd.y - centerLineStart.y,
-        centerLineEnd.x - centerLineStart.x,
-      ) *
-        180) /
-      Math.PI,
-  };
-})();
-
 const sketchBoundaryLabels: Record<BoundarySide, string> = {
   front: "Frente / rua",
   right: "Flanco direito",
@@ -182,6 +140,43 @@ function edgeLabel(
   };
 }
 
+function outwardEdgeLabel(
+  start: DrawingPoint,
+  end: DrawingPoint,
+  center: DrawingPoint,
+  offset: number,
+) {
+  const middle = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+  const away = { x: middle.x - center.x, y: middle.y - center.y };
+  const length = Math.max(Math.hypot(away.x, away.y), 1);
+  const placement = edgeLabel(start, end, 0);
+  return {
+    x: middle.x + (away.x / length) * offset,
+    y: middle.y + (away.y / length) * offset,
+    angle: placement.angle,
+    normalX: away.x / length,
+    normalY: away.y / length,
+  };
+}
+
+function curveControl(
+  start: DrawingPoint,
+  end: DrawingPoint,
+  center: DrawingPoint,
+  curved: boolean,
+  bulge: number,
+) {
+  const middle = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+  const toward = { x: center.x - middle.x, y: center.y - middle.y };
+  const centerLength = Math.max(Math.hypot(toward.x, toward.y), 1);
+  const edgeLength = Math.max(Math.hypot(end.x - start.x, end.y - start.y), 1);
+  const amount = curved ? (bulge === 0 ? 0.18 : bulge) : 0;
+  return {
+    x: middle.x + (toward.x / centerLength) * edgeLength * 0.42 * amount,
+    y: middle.y + (toward.y / centerLength) * edgeLength * 0.42 * amount,
+  };
+}
+
 function streetLabelFontSize(label: string) {
   if (label.length > 38) return 6.6;
   if (label.length > 30) return 7.2;
@@ -202,16 +197,27 @@ export function CroquiWorkspace({
   initialSettings,
   initialLocationImageUrl,
 }: Props) {
-  const [settings, setSettings] = useState<UrbanSketchSettings>(() => ({
-    ...defaultUrbanSketchSettings,
-    ...initialSettings,
-    bci: initialSettings?.bci || data.bci,
-    claimantDocument: initialSettings?.claimantDocument || data.cpf,
-    dataOverrides: createSketchDataOverrides(
-      data,
-      initialSettings?.dataOverrides,
-    ),
-  }));
+  const [settings, setSettings] = useState<UrbanSketchSettings>(() => {
+    const emptyOffsets = createEmptyVertexOffsets(data);
+    const savedOffsets = initialSettings?.vertexOffsets;
+    return {
+      ...defaultUrbanSketchSettings,
+      ...initialSettings,
+      northAngle:
+        initialSettings?.northAngle ?? data.plotGeometry.northAngle ?? 0,
+      inclination: initialSettings?.inclination ?? 0,
+      bci: initialSettings?.bci || data.bci,
+      claimantDocument: initialSettings?.claimantDocument || data.cpf,
+      vertexOffsets:
+        Array.isArray(savedOffsets) && savedOffsets.length === emptyOffsets.length
+          ? savedOffsets
+          : emptyOffsets,
+      dataOverrides: createSketchDataOverrides(
+        data,
+        initialSettings?.dataOverrides,
+      ),
+    };
+  });
   const [locationImage, setLocationImage] = useState<string | null>(null);
   const [semobiLogo, setSemobiLogo] = useState<string | null>(null);
   const [prefeituraLogo, setPrefeituraLogo] = useState<string | null>(null);
@@ -237,7 +243,7 @@ export function CroquiWorkspace({
     () =>
       buildSketchGeometry(effectiveData, {
         ...settings,
-        vertexOffsets: defaultUrbanSketchSettings.vertexOffsets,
+        vertexOffsets: createEmptyVertexOffsets(effectiveData),
       }),
     [
       effectiveData,
@@ -248,9 +254,6 @@ export function CroquiWorkspace({
       settings.showBuilding,
     ],
   );
-  const measurements = getSketchMeasurements(effectiveData);
-  const [frontUpper, frontLower, backLower, backUpper] = geometry.points;
-  const polygon = geometry.points.map((point) => `${point.x},${point.y}`).join(" ");
   const claimant = effectiveData.claimantName.toUpperCase();
   const address = [
     effectiveData.propertyAddress,
@@ -261,29 +264,68 @@ export function CroquiWorkspace({
     .filter(Boolean)
     .join(", ");
   const addressLines = wrapText(address, 82, 2);
-  const frontMeasurementLabel = edgeLabel(frontUpper, frontLower, 14);
-  const rightMeasurementLabel = edgeLabel(backUpper, frontUpper, 12);
-  const leftMeasurementLabel = edgeLabel(frontLower, backLower, 12);
-  const backMeasurementLabel = edgeLabel(backLower, backUpper, 14);
-  const rightConfrontantLabel = edgeLabel(backUpper, frontUpper, 37);
-  const leftConfrontantLabel = edgeLabel(frontLower, backLower, 39);
-  const backConfrontantLabel = edgeLabel(backLower, backUpper, 47);
-  const frontConfrontant = getSketchConfrontant(
-    effectiveData,
-    "front",
-  ).toUpperCase();
   const plotCenter = geometry.points.reduce(
     (center, point) => ({
-      x: center.x + point.x / 4,
-      y: center.y + point.y / 4,
+      x: center.x + point.x / geometry.points.length,
+      y: center.y + point.y / geometry.points.length,
     }),
     { x: 0, y: 0 },
   );
-  const plotAngleRadians = (rightMeasurementLabel.angle * Math.PI) / 180;
+  let plotPath = geometry.points.length
+    ? `M ${geometry.points[0].x} ${geometry.points[0].y}`
+    : "";
+  geometry.points.forEach((point, index) => {
+    const next = geometry.points[(index + 1) % geometry.points.length];
+    const edge = geometry.edges.find(
+      (candidate) =>
+        candidate.fromVertex === index &&
+        candidate.toVertex === (index + 1) % geometry.points.length,
+    );
+    if (edge?.curved) {
+      const control = curveControl(
+        point,
+        next,
+        plotCenter,
+        edge.curved,
+        edge.curveBulge,
+      );
+      plotPath += ` Q ${control.x} ${control.y} ${next.x} ${next.y}`;
+    } else {
+      plotPath += ` L ${next.x} ${next.y}`;
+    }
+  });
+  plotPath += " Z";
+  const fallbackBuildingAngle = geometry.points[0] && geometry.points[1]
+    ? edgeLabel(geometry.points[0], geometry.points[1], 0).angle
+    : 0;
+  const plotAngleRadians = (fallbackBuildingAngle * Math.PI) / 180;
   const buildingCenter = {
     x: plotCenter.x - Math.cos(plotAngleRadians) * 72,
     y: plotCenter.y - Math.sin(plotAngleRadians) * 72,
   };
+  const perimeterRows = geometry.points.map((_, index) => ({
+    from: index,
+    to: (index + 1) % geometry.points.length,
+    edge: geometry.edges.find(
+      (candidate) =>
+        candidate.fromVertex === index &&
+        candidate.toVertex === (index + 1) % geometry.points.length,
+    ),
+    coordinateX: effectiveData.plotGeometry.vertices[index]?.coordinateX || "",
+    coordinateY: effectiveData.plotGeometry.vertices[index]?.coordinateY || "",
+  }));
+  const hasVertexCoordinates =
+    perimeterRows.length > 0 &&
+    perimeterRows.every((row) => row.coordinateX && row.coordinateY);
+  const perimeterTable = {
+    x: hasVertexCoordinates ? 388 : 470,
+    y: 198,
+    width: hasVertexCoordinates ? 197 : 110,
+    headerHeight: 17,
+    rowHeight: 14,
+  };
+  const perimeterTableHeight =
+    perimeterTable.headerHeight + perimeterRows.length * perimeterTable.rowHeight;
 
   useEffect(() => {
     let active = true;
@@ -364,6 +406,25 @@ export function CroquiWorkspace({
             boundary.side === side
               ? { ...boundary, [key]: value }
               : boundary,
+          ),
+        },
+      };
+    });
+  }
+
+  function updateVertexCoordinate(
+    index: number,
+    key: "coordinateX" | "coordinateY",
+    value: string,
+  ) {
+    setSettings((current) => {
+      const overrides = createSketchDataOverrides(data, current.dataOverrides);
+      return {
+        ...current,
+        dataOverrides: {
+          ...overrides,
+          vertices: overrides.vertices.map((vertex, vertexIndex) =>
+            vertexIndex === index ? { ...vertex, [key]: value } : vertex,
           ),
         },
       };
@@ -485,15 +546,8 @@ export function CroquiWorkspace({
     point.x = event.clientX;
     point.y = event.clientY;
     const local = point.matrixTransform(matrix.inverse());
-    const limits = [
-      { minX: 85, maxX: 330, minY: 250, maxY: 500 },
-      { minX: 70, maxX: 310, minY: 310, maxY: 570 },
-      { minX: 330, maxX: 550, minY: 390, maxY: 650 },
-      { minX: 350, maxX: 565, minY: 300, maxY: 590 },
-    ];
-    const limit = limits[index];
-    const x = Math.max(limit.minX, Math.min(limit.maxX, local.x));
-    const y = Math.max(limit.minY, Math.min(limit.maxY, local.y));
+    const x = Math.max(45, Math.min(565, local.x));
+    const y = Math.max(210, Math.min(590, local.y));
     setSettings((current) => {
       const offsets = current.vertexOffsets.map((offset) => ({ ...offset })) as
         UrbanSketchSettings["vertexOffsets"];
@@ -508,8 +562,7 @@ export function CroquiWorkspace({
   function restoreCalculatedShape() {
     updateSetting(
       "vertexOffsets",
-      defaultUrbanSketchSettings.vertexOffsets.map((point) => ({ ...point })) as
-        UrbanSketchSettings["vertexOffsets"],
+      createEmptyVertexOffsets(effectiveData),
     );
     setMessage("Formato calculado restaurado.");
   }
@@ -807,6 +860,35 @@ export function CroquiWorkspace({
                 </div>
               ))}
             </div>
+            {dataOverrides.vertices.length > 0 && (
+              <div className="croqui-boundary-corrections">
+                <strong>Coordenadas dos vértices</strong>
+                {dataOverrides.vertices.map((vertex, index) => (
+                  <div className="croqui-boundary-correction" key={`vertex-coordinate-${index}`}>
+                    <label className="field">
+                      <span>P{index + 1} - Coord. X</span>
+                      <input
+                        value={vertex.coordinateX}
+                        onChange={(event) =>
+                          updateVertexCoordinate(index, "coordinateX", event.target.value)
+                        }
+                        placeholder="Não informada"
+                      />
+                    </label>
+                    <label className="field">
+                      <span>P{index + 1} - Coord. Y</span>
+                      <input
+                        value={vertex.coordinateY}
+                        onChange={(event) =>
+                          updateVertexCoordinate(index, "coordinateY", event.target.value)
+                        }
+                        placeholder="Não informada"
+                      />
+                    </label>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           <label className="check-row">
@@ -842,7 +924,7 @@ export function CroquiWorkspace({
           {editingVertices && (
             <div className="vertex-editor-note">
               <MoveDiagonal2 size={16} />
-              Arraste os quatro pontos azuis sobre a folha.
+              Arraste os {geometry.points.length} pontos azuis sobre a folha.
               <button type="button" onClick={restoreCalculatedShape}>
                 Restaurar formato calculado
               </button>
@@ -851,10 +933,11 @@ export function CroquiWorkspace({
 
           <div className="croqui-measurements">
             <strong>Medidas utilizadas</strong>
-            <span>Frente: {formatMeasurement(measurements.front)} m</span>
-            <span>Direita: {formatMeasurement(measurements.right)} m</span>
-            <span>Fundo: {formatMeasurement(measurements.back)} m</span>
-            <span>Esquerda: {formatMeasurement(measurements.left)} m</span>
+            {geometry.edges.map((edge, index) => (
+              <span key={`used-measurement-${index}`}>
+                P{edge.fromVertex + 1} - P{edge.toVertex + 1}: {formatMeasurement(edge.measurement)} m
+              </span>
+            ))}
           </div>
 
           <div className="croqui-actions">
@@ -916,7 +999,10 @@ export function CroquiWorkspace({
               onClick={() =>
                 setSettings({
                   ...defaultUrbanSketchSettings,
+                  northAngle: data.plotGeometry.northAngle ?? 0,
                   claimantDocument: data.cpf,
+                  bci: data.bci,
+                  vertexOffsets: createEmptyVertexOffsets(data),
                   dataOverrides: createSketchDataOverrides(data),
                 })
               }
@@ -1033,41 +1119,71 @@ export function CroquiWorkspace({
               <path d="M0 -45 L0 10 L19 23 Z" fill="white" stroke="#111" strokeWidth="1" />
             </g>
 
-            <line
-              x1={streetEdges.upper.start.x}
-              y1={streetEdges.upper.start.y}
-              x2={streetEdges.upper.end.x}
-              y2={streetEdges.upper.end.y}
-              stroke="#111"
-              strokeWidth="1.6"
-            />
-            <line
-              x1={streetEdges.lower.start.x}
-              y1={streetEdges.lower.start.y}
-              x2={streetEdges.lower.end.x}
-              y2={streetEdges.lower.end.y}
-              stroke="#111"
-              strokeWidth="1.6"
-            />
-            <text
-              x={streetLabelPosition.x}
-              y={streetLabelPosition.y}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fontSize={streetLabelFontSize(frontConfrontant)}
-              fontWeight="700"
-              transform={`rotate(${streetLabelPosition.angle} ${streetLabelPosition.x} ${streetLabelPosition.y})`}
-            >
-              {frontConfrontant}
-            </text>
+            {geometry.edges
+              .filter(
+                (edge) =>
+                  edge.isStreet &&
+                  geometry.points[edge.fromVertex] &&
+                  geometry.points[edge.toVertex],
+              )
+              .map((edge, index) => {
+                const start = geometry.points[edge.fromVertex];
+                const end = geometry.points[edge.toVertex];
+                const placement = outwardEdgeLabel(start, end, plotCenter, 0);
+                const edgeLength = Math.max(Math.hypot(end.x - start.x, end.y - start.y), 1);
+                const tangentX = (end.x - start.x) / edgeLength;
+                const tangentY = (end.y - start.y) / edgeLength;
+                const extension = edge.curved ? 0 : Math.min(70, edgeLength * 0.45);
+                const control = curveControl(start, end, plotCenter, edge.curved, edge.curveBulge);
+                const pathAt = (offset: number) => {
+                  const startX = start.x + placement.normalX * offset - tangentX * extension;
+                  const startY = start.y + placement.normalY * offset - tangentY * extension;
+                  const endX = end.x + placement.normalX * offset + tangentX * extension;
+                  const endY = end.y + placement.normalY * offset + tangentY * extension;
+                  return edge.curved
+                    ? `M ${startX} ${startY} Q ${control.x + placement.normalX * offset} ${control.y + placement.normalY * offset} ${endX} ${endY}`
+                    : `M ${startX} ${startY} L ${endX} ${endY}`;
+                };
+                const streetName = (edge.streetName || edge.label || "RUA").toUpperCase();
+                const name = outwardEdgeLabel(start, end, plotCenter, 20);
+                return (
+                  <g key={`street-${edge.fromVertex}-${edge.toVertex}-${index}`}>
+                    <path d={pathAt(11)} fill="none" stroke="#111" strokeWidth="1" />
+                    <path d={pathAt(44)} fill="none" stroke="#111" strokeWidth="1" />
+                    <text
+                      x={name.x}
+                      y={name.y}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fontSize={streetLabelFontSize(streetName)}
+                      fontWeight="400"
+                      transform={`rotate(${name.angle} ${name.x} ${name.y})`}
+                    >
+                      {streetName.slice(0, 38)}
+                    </text>
+                  </g>
+                );
+              })}
 
-            <polygon
-              points={polygon}
+            <path
+              d={plotPath}
               fill="url(#dotPattern)"
               stroke="#111"
               strokeWidth="2.2"
             />
+            {settings.showBuilding && geometry.buildings.length > 0
+              ? geometry.buildings.map((building, index) => (
+                  <polygon
+                    key={`building-shape-${index}`}
+                    points={building.map((point) => `${point.x},${point.y}`).join(" ")}
+                    fill="url(#buildingHatch)"
+                    stroke="#7b8388"
+                    strokeWidth="1"
+                  />
+                ))
+              : null}
             {settings.showBuilding &&
+            geometry.buildings.length === 0 &&
             effectiveData.builtArea &&
             effectiveData.builtArea > 0 ? (
               <rect
@@ -1077,60 +1193,200 @@ export function CroquiWorkspace({
                 height="54"
                 fill="url(#buildingHatch)"
                 stroke="#7b8388"
-                transform={`rotate(${rightMeasurementLabel.angle} ${buildingCenter.x} ${buildingCenter.y})`}
+                transform={`rotate(${fallbackBuildingAngle} ${buildingCenter.x} ${buildingCenter.y})`}
               />
             ) : null}
 
-            {[
-              [frontMeasurementLabel, measurements.front],
-              [rightMeasurementLabel, measurements.right],
-              [leftMeasurementLabel, measurements.left],
-              [backMeasurementLabel, measurements.back],
-            ].map(([placement, measurement], index) => {
-              const label = placement as ReturnType<typeof edgeLabel>;
+            {geometry.edges.map((edge, index) => {
+              const start = geometry.points[edge.fromVertex];
+              const end = geometry.points[edge.toVertex];
+              if (!start || !end) return null;
+              const measurement = outwardEdgeLabel(
+                start,
+                end,
+                plotCenter,
+                edge.isStreet ? -13 : 13,
+              );
+              const confrontant = outwardEdgeLabel(start, end, plotCenter, 34);
               return (
-                <text
-                  key={`measurement-${index}`}
-                  x={label.x}
-                  y={label.y}
-                  textAnchor="middle"
-                  fontSize="9"
-                  fontWeight="700"
-                  transform={`rotate(${label.angle} ${label.x} ${label.y})`}
-                >
-                  {formatMeasurement(measurement as number)} m
-                </text>
+                <g key={`edge-details-${index}`}>
+                  {edge.measurement !== null && (
+                    <text
+                      x={measurement.x}
+                      y={measurement.y}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fontSize="9"
+                      fontWeight="700"
+                      paintOrder="stroke"
+                      stroke="white"
+                      strokeWidth="3"
+                      transform={`rotate(${measurement.angle} ${measurement.x} ${measurement.y})`}
+                    >
+                      {formatMeasurement(edge.measurement)} m
+                    </text>
+                  )}
+                  {!edge.isStreet && edge.label && (
+                    <text
+                      x={confrontant.x}
+                      y={confrontant.y}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fontSize="8.2"
+                      fontWeight="400"
+                      paintOrder="stroke"
+                      stroke="white"
+                      strokeWidth="3"
+                      transform={`rotate(${confrontant.angle} ${confrontant.x} ${confrontant.y})`}
+                    >
+                      {edge.label.toUpperCase().slice(0, 38)}
+                    </text>
+                  )}
+                </g>
               );
             })}
-            {[
-              [
-                rightConfrontantLabel,
-                getSketchConfrontant(effectiveData, "right"),
-              ],
-              [
-                leftConfrontantLabel,
-                getSketchConfrontant(effectiveData, "left"),
-              ],
-              [
-                backConfrontantLabel,
-                getSketchConfrontant(effectiveData, "back"),
-              ],
-            ].map(([placement, confrontant], index) => {
-              const label = placement as ReturnType<typeof edgeLabel>;
+
+            {geometry.points.map((point, index) => {
+              const touchesStreet = geometry.edges.some(
+                (edge) => edge.isStreet &&
+                  (edge.fromVertex === index || edge.toVertex === index),
+              );
+              const horizontalDirection = point.x < plotCenter.x ? -1 : 1;
+              const awayX = point.x - plotCenter.x;
+              const awayY = point.y - plotCenter.y;
+              const awayLength = Math.max(Math.hypot(awayX, awayY), 1);
+              const labelX = touchesStreet
+                ? point.x + horizontalDirection * 5
+                : point.x + (awayX / awayLength) * 9;
+              const labelY = touchesStreet
+                ? point.y
+                : point.y + (awayY / awayLength) * 9;
               return (
-                <text
-                  key={`confrontant-${index}`}
-                  x={label.x}
-                  y={label.y}
-                  textAnchor="middle"
-                  fontSize="8.2"
-                  fontWeight="700"
-                  transform={`rotate(${label.angle} ${label.x} ${label.y})`}
-                >
-                  {String(confrontant).toUpperCase()}
-                </text>
+                <g key={`permanent-vertex-${index}`}>
+                  <circle cx={point.x} cy={point.y} r="1.6" fill="#111" />
+                  <text
+                    x={labelX}
+                    y={labelY}
+                    textAnchor={touchesStreet ? (horizontalDirection < 0 ? "end" : "start") : "middle"}
+                    dominantBaseline="middle"
+                    fontSize="7.5"
+                    fontWeight="700"
+                    paintOrder="stroke"
+                    stroke="white"
+                    strokeWidth="2.5"
+                  >
+                    P{index + 1}
+                  </text>
+                </g>
               );
             })}
+
+            <g aria-label="Tabela de pontos e perímetro">
+              <rect
+                x={perimeterTable.x}
+                y={perimeterTable.y}
+                width={perimeterTable.width}
+                height={perimeterTableHeight}
+                fill="white"
+                fillOpacity="0.97"
+                stroke="#111"
+                strokeWidth="0.6"
+              />
+              <line
+                x1={perimeterTable.x}
+                y1={perimeterTable.y + perimeterTable.headerHeight}
+                x2={perimeterTable.x + perimeterTable.width}
+                y2={perimeterTable.y + perimeterTable.headerHeight}
+                stroke="#111"
+                strokeWidth="0.5"
+              />
+              {(hasVertexCoordinates ? [36, 98, 160] : [44]).map((offset) => (
+                <line
+                  key={`perimeter-column-${offset}`}
+                  x1={perimeterTable.x + offset}
+                  y1={perimeterTable.y}
+                  x2={perimeterTable.x + offset}
+                  y2={perimeterTable.y + perimeterTableHeight}
+                  stroke="#111"
+                  strokeWidth="0.5"
+                />
+              ))}
+              <text
+                x={perimeterTable.x + (hasVertexCoordinates ? 18 : 22)}
+                y={perimeterTable.y + 11.5}
+                textAnchor="middle"
+                fontSize="6.5"
+                fontWeight="500"
+              >
+                PONTO
+              </text>
+              {hasVertexCoordinates && (
+                <>
+                  <text x={perimeterTable.x + 67} y={perimeterTable.y + 11.5} textAnchor="middle" fontSize="6.5">
+                    COORD. X
+                  </text>
+                  <text x={perimeterTable.x + 129} y={perimeterTable.y + 11.5} textAnchor="middle" fontSize="6.5">
+                    COORD. Y
+                  </text>
+                </>
+              )}
+              <text
+                x={perimeterTable.x + (hasVertexCoordinates ? 178.5 : 77)}
+                y={perimeterTable.y + 11.5}
+                textAnchor="middle"
+                fontSize="6.5"
+              >
+                DIST.
+              </text>
+              {perimeterRows.map((row, index) => {
+                const rowY =
+                  perimeterTable.y +
+                  perimeterTable.headerHeight +
+                  index * perimeterTable.rowHeight;
+                return (
+                  <g key={`perimeter-row-${row.from}-${row.to}`}>
+                    {index > 0 && (
+                      <line
+                        x1={perimeterTable.x}
+                        y1={rowY}
+                        x2={perimeterTable.x + perimeterTable.width}
+                        y2={rowY}
+                        stroke="#777"
+                        strokeWidth="0.45"
+                      />
+                    )}
+                    <text
+                      x={perimeterTable.x + (hasVertexCoordinates ? 18 : 22)}
+                      y={rowY + 9.5}
+                      textAnchor="middle"
+                      fontSize="6.7"
+                    >
+                      P{row.from + 1}
+                    </text>
+                    {hasVertexCoordinates && (
+                      <>
+                        <text x={perimeterTable.x + 67} y={rowY + 9.5} textAnchor="middle" fontSize="6.4">
+                          {row.coordinateX}
+                        </text>
+                        <text x={perimeterTable.x + 129} y={rowY + 9.5} textAnchor="middle" fontSize="6.4">
+                          {row.coordinateY}
+                        </text>
+                      </>
+                    )}
+                    <text
+                      x={perimeterTable.x + (hasVertexCoordinates ? 178.5 : 77)}
+                      y={rowY + 9.5}
+                      textAnchor="middle"
+                      fontSize="6.7"
+                    >
+                      {row.edge?.measurement === null || row.edge?.measurement === undefined
+                        ? "-"
+                        : formatMeasurement(row.edge.measurement)}
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
 
             {editingVertices &&
               geometry.points.map((point, index) => (

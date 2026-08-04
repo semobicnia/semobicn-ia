@@ -12,7 +12,8 @@ const uuidPattern =
 function validVertexOffsets(value: unknown) {
   return (
     Array.isArray(value) &&
-    value.length === 4 &&
+    value.length >= 3 &&
+    value.length <= 12 &&
     value.every(
       (point) =>
         point &&
@@ -40,6 +41,16 @@ function validDataOverrides(value: unknown) {
     typeof overrides.lot === "string" &&
     validArea(overrides.landArea) &&
     validArea(overrides.builtArea) &&
+    Array.isArray(overrides.vertices) &&
+    overrides.vertices.length <= 12 &&
+    overrides.vertices.every((vertex) => {
+      if (!vertex || typeof vertex !== "object") return false;
+      const item = vertex as Record<string, unknown>;
+      return (
+        typeof item.coordinateX === "string" &&
+        typeof item.coordinateY === "string"
+      );
+    }) &&
     Array.isArray(overrides.boundaries) &&
     overrides.boundaries.length === 4 &&
     new Set(
