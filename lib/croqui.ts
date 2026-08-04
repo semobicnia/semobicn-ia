@@ -25,6 +25,14 @@ export type UrbanSketchDataOverrides = {
   }>;
 };
 
+export type UrbanSketchLayoutOffsets = {
+  plot: SketchPoint;
+  table: SketchPoint;
+  buildings: SketchPoint[];
+  edgeTexts: SketchPoint[];
+  streetTexts: SketchPoint[];
+};
+
 export type UrbanSketchSettings = {
   northAngle: number;
   scale: string;
@@ -36,6 +44,7 @@ export type UrbanSketchSettings = {
   showBuilding: boolean;
   approximationNotice: boolean;
   vertexOffsets: SketchPoint[];
+  layoutOffsets: UrbanSketchLayoutOffsets;
 };
 
 const emptyVertexOffsets: UrbanSketchSettings["vertexOffsets"] = [
@@ -44,6 +53,45 @@ const emptyVertexOffsets: UrbanSketchSettings["vertexOffsets"] = [
   { x: 0, y: 0 },
   { x: 0, y: 0 },
 ];
+
+const zeroPoint = () => ({ x: 0, y: 0 });
+
+export function createDefaultLayoutOffsets(data: TopographicData) {
+  const edgeCount =
+    data.plotGeometry.edges.length >= 3 ? data.plotGeometry.edges.length : 4;
+  const buildingCount = Math.max(data.plotGeometry.buildings.length, 1);
+  return {
+    plot: zeroPoint(),
+    table: zeroPoint(),
+    buildings: Array.from({ length: buildingCount }, zeroPoint),
+    edgeTexts: Array.from({ length: edgeCount }, zeroPoint),
+    streetTexts: Array.from({ length: edgeCount }, zeroPoint),
+  } satisfies UrbanSketchLayoutOffsets;
+}
+
+export function normalizeLayoutOffsets(
+  data: TopographicData,
+  saved?: Partial<UrbanSketchLayoutOffsets>,
+) {
+  const defaults = createDefaultLayoutOffsets(data);
+  const point = (value: SketchPoint | undefined) => ({
+    x: Number.isFinite(value?.x) ? value!.x : 0,
+    y: Number.isFinite(value?.y) ? value!.y : 0,
+  });
+  return {
+    plot: point(saved?.plot),
+    table: point(saved?.table),
+    buildings: defaults.buildings.map((_, index) =>
+      point(saved?.buildings?.[index]),
+    ),
+    edgeTexts: defaults.edgeTexts.map((_, index) =>
+      point(saved?.edgeTexts?.[index]),
+    ),
+    streetTexts: defaults.streetTexts.map((_, index) =>
+      point(saved?.streetTexts?.[index]),
+    ),
+  } satisfies UrbanSketchLayoutOffsets;
+}
 
 export const defaultUrbanSketchSettings: UrbanSketchSettings = {
   northAngle: 0,
@@ -55,6 +103,13 @@ export const defaultUrbanSketchSettings: UrbanSketchSettings = {
   showBuilding: true,
   approximationNotice: true,
   vertexOffsets: emptyVertexOffsets,
+  layoutOffsets: {
+    plot: { x: 0, y: 0 },
+    table: { x: 0, y: 0 },
+    buildings: [{ x: 0, y: 0 }],
+    edgeTexts: Array.from({ length: 4 }, zeroPoint),
+    streetTexts: Array.from({ length: 4 }, zeroPoint),
+  },
 };
 
 export function createSketchDataOverrides(
@@ -216,14 +271,25 @@ export function buildSketchGeometry(
         ? settings.vertexOffsets
         : createEmptyVertexOffsets(data);
     const points = basePoints.map((point, index) => ({
-      x: Math.max(45, Math.min(565, point.x + (offsets[index]?.x || 0))),
-      y: Math.max(210, Math.min(590, point.y + (offsets[index]?.y || 0))),
+      x: Math.max(45, Math.min(565, point.x + (offsets[index]?.x || 0))) +
+        (settings.layoutOffsets?.plot?.x || 0),
+      y: Math.max(210, Math.min(590, point.y + (offsets[index]?.y || 0))) +
+        (settings.layoutOffsets?.plot?.y || 0),
     }));
+    const plotOffset = settings.layoutOffsets?.plot || zeroPoint();
+    const buildingOffsets = settings.layoutOffsets?.buildings || [];
     return {
       points,
       edges: data.plotGeometry.edges,
-      buildings: data.plotGeometry.buildings.map((building) =>
-        building.vertices.map(mapPoint),
+      buildings: data.plotGeometry.buildings.map((building, buildingIndex) =>
+        building.vertices.map((point) => {
+          const mapped = mapPoint(point);
+          const offset = buildingOffsets[buildingIndex] || zeroPoint();
+          return {
+            x: mapped.x + plotOffset.x + offset.x,
+            y: mapped.y + plotOffset.y + offset.y,
+          };
+        }),
       ),
       sourceBased: true,
       width: sourceWidth * scale,
@@ -295,8 +361,10 @@ export function buildSketchGeometry(
     const x = point.x + (Number.isFinite(offset?.x) ? offset.x : 0);
     const y = point.y + (Number.isFinite(offset?.y) ? offset.y : 0);
     return {
-      x: Math.max(limit.minX, Math.min(limit.maxX, x)),
-      y: Math.max(limit.minY, Math.min(limit.maxY, y)),
+      x: Math.max(limit.minX, Math.min(limit.maxX, x)) +
+        (settings.layoutOffsets?.plot?.x || 0),
+      y: Math.max(limit.minY, Math.min(limit.maxY, y)) +
+        (settings.layoutOffsets?.plot?.y || 0),
     };
   });
 

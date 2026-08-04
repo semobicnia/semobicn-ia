@@ -23,12 +23,15 @@ import { AppHeader, type HeaderUser } from "./app-header";
 import {
   applySketchDataOverrides,
   buildSketchGeometry,
+  createDefaultLayoutOffsets,
   createEmptyVertexOffsets,
   createSketchDataOverrides,
   defaultUrbanSketchSettings,
   formatMeasurement,
+  normalizeLayoutOffsets,
   type UrbanSketchBoundaryOverride,
   type UrbanSketchDataOverrides,
+  type UrbanSketchLayoutOffsets,
   type UrbanSketchSettings,
 } from "@/lib/croqui";
 import type {
@@ -114,6 +117,19 @@ function wrapText(text: string, maxLength: number, maxLines: number) {
 }
 
 type DrawingPoint = { x: number; y: number };
+
+type LayoutDragTarget =
+  | { kind: "plot" }
+  | { kind: "table" }
+  | { kind: "building"; index: number }
+  | { kind: "edgeText"; index: number }
+  | { kind: "streetText"; index: number };
+
+type LayoutDragState = {
+  target: LayoutDragTarget;
+  start: DrawingPoint;
+  initial: DrawingPoint;
+};
 
 const sketchBoundaryLabels: Record<BoundarySide, string> = {
   front: "Frente / rua",
@@ -212,6 +228,7 @@ export function CroquiWorkspace({
         Array.isArray(savedOffsets) && savedOffsets.length === emptyOffsets.length
           ? savedOffsets
           : emptyOffsets,
+      layoutOffsets: normalizeLayoutOffsets(data, initialSettings?.layoutOffsets),
       dataOverrides: createSketchDataOverrides(
         data,
         initialSettings?.dataOverrides,
@@ -225,7 +242,9 @@ export function CroquiWorkspace({
   const [uploadingImage, setUploadingImage] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [editingVertices, setEditingVertices] = useState(false);
+  const [editingLayout, setEditingLayout] = useState(false);
   const draggingVertex = useRef<number | null>(null);
+  const draggingLayout = useRef<LayoutDragState | null>(null);
   const [message, setMessage] = useState("");
   const dataOverrides = useMemo(
     () => createSketchDataOverrides(data, settings.dataOverrides),
@@ -234,6 +253,10 @@ export function CroquiWorkspace({
   const effectiveData = useMemo(
     () => applySketchDataOverrides(data, dataOverrides),
     [data, dataOverrides],
+  );
+  const layoutOffsets = useMemo(
+    () => normalizeLayoutOffsets(effectiveData, settings.layoutOffsets),
+    [effectiveData, settings.layoutOffsets],
   );
   const geometry = useMemo(
     () => buildSketchGeometry(effectiveData, settings),
@@ -249,6 +272,7 @@ export function CroquiWorkspace({
       effectiveData,
       settings.approximationNotice,
       settings.inclination,
+      settings.layoutOffsets,
       settings.northAngle,
       settings.scale,
       settings.showBuilding,
@@ -300,8 +324,12 @@ export function CroquiWorkspace({
     : 0;
   const plotAngleRadians = (fallbackBuildingAngle * Math.PI) / 180;
   const buildingCenter = {
-    x: plotCenter.x - Math.cos(plotAngleRadians) * 72,
-    y: plotCenter.y - Math.sin(plotAngleRadians) * 72,
+    x:
+      plotCenter.x - Math.cos(plotAngleRadians) * 72 +
+      (layoutOffsets.buildings[0]?.x || 0),
+    y:
+      plotCenter.y - Math.sin(plotAngleRadians) * 72 +
+      (layoutOffsets.buildings[0]?.y || 0),
   };
   const perimeterRows = geometry.points.map((_, index) => ({
     from: index,
@@ -318,11 +346,11 @@ export function CroquiWorkspace({
     perimeterRows.length > 0 &&
     perimeterRows.every((row) => row.coordinateX && row.coordinateY);
   const perimeterTable = {
-    x: hasVertexCoordinates ? 388 : 470,
-    y: 198,
-    width: hasVertexCoordinates ? 197 : 110,
-    headerHeight: 17,
-    rowHeight: 14,
+    x: (hasVertexCoordinates ? 421 : 503) + layoutOffsets.table.x,
+    y: 145 + layoutOffsets.table.y,
+    width: hasVertexCoordinates ? 164 : 82,
+    headerHeight: 13,
+    rowHeight: 11,
   };
   const perimeterTableHeight =
     perimeterTable.headerHeight + perimeterRows.length * perimeterTable.rowHeight;
@@ -559,12 +587,88 @@ export function CroquiWorkspace({
     });
   }
 
+  function pointerPosition(event: ReactPointerEvent<SVGElement>) {
+    const svg = event.currentTarget.ownerSVGElement;
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !matrix) return null;
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    return point.matrixTransform(matrix.inverse());
+  }
+
+  function layoutOffsetForTarget(
+    offsets: UrbanSketchLayoutOffsets,
+    target: LayoutDragTarget,
+  ) {
+    if (target.kind === "plot" || target.kind === "table") {
+      return offsets[target.kind];
+    }
+    if (target.kind === "building") return offsets.buildings[target.index];
+    if (target.kind === "edgeText") return offsets.edgeTexts[target.index];
+    return offsets.streetTexts[target.index];
+  }
+
+  function beginLayoutDrag(
+    target: LayoutDragTarget,
+    event: ReactPointerEvent<SVGElement>,
+  ) {
+    if (!editingLayout) return;
+    const start = pointerPosition(event);
+    if (!start) return;
+    const initial = layoutOffsetForTarget(layoutOffsets, target) || { x: 0, y: 0 };
+    draggingLayout.current = {
+      target,
+      start: { x: start.x, y: start.y },
+      initial: { ...initial },
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  }
+
+  function moveLayoutItem(event: ReactPointerEvent<SVGElement>) {
+    const drag = draggingLayout.current;
+    if (!drag) return;
+    const currentPoint = pointerPosition(event);
+    if (!currentPoint) return;
+    const next = {
+      x: Math.max(-450, Math.min(450, drag.initial.x + currentPoint.x - drag.start.x)),
+      y: Math.max(-350, Math.min(350, drag.initial.y + currentPoint.y - drag.start.y)),
+    };
+    setSettings((current) => {
+      const offsets = normalizeLayoutOffsets(effectiveData, current.layoutOffsets);
+      const target = drag.target;
+      if (target.kind === "plot" || target.kind === "table") {
+        offsets[target.kind] = next;
+      } else if (target.kind === "building") {
+        offsets.buildings[target.index] = next;
+      } else if (target.kind === "edgeText") {
+        offsets.edgeTexts[target.index] = next;
+      } else {
+        offsets.streetTexts[target.index] = next;
+      }
+      return { ...current, layoutOffsets: offsets };
+    });
+  }
+
+  function endLayoutDrag(event: ReactPointerEvent<SVGElement>) {
+    draggingLayout.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
   function restoreCalculatedShape() {
     updateSetting(
       "vertexOffsets",
       createEmptyVertexOffsets(effectiveData),
     );
     setMessage("Formato calculado restaurado.");
+  }
+
+  function restoreLayout() {
+    updateSetting("layoutOffsets", createDefaultLayoutOffsets(effectiveData));
+    setMessage("Distribuição original restaurada.");
   }
 
   async function saveSketch(finalize = false) {
@@ -917,7 +1021,10 @@ export function CroquiWorkspace({
             <input
               type="checkbox"
               checked={editingVertices}
-              onChange={(event) => setEditingVertices(event.target.checked)}
+              onChange={(event) => {
+                setEditingVertices(event.target.checked);
+                if (event.target.checked) setEditingLayout(false);
+              }}
             />
             Ajustar vértices manualmente
           </label>
@@ -927,6 +1034,28 @@ export function CroquiWorkspace({
               Arraste os {geometry.points.length} pontos azuis sobre a folha.
               <button type="button" onClick={restoreCalculatedShape}>
                 Restaurar formato calculado
+              </button>
+            </div>
+          )}
+
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={editingLayout}
+              onChange={(event) => {
+                setEditingLayout(event.target.checked);
+                if (event.target.checked) setEditingVertices(false);
+              }}
+            />
+            Ajustar distribuição do desenho
+          </label>
+          {editingLayout && (
+            <div className="vertex-editor-note">
+              <MoveDiagonal2 size={16} />
+              Arraste os controles laranja para mover o terreno, a tabela, as
+              edificações e os textos sem alterar medidas ou coordenadas.
+              <button type="button" onClick={restoreLayout}>
+                Restaurar distribuição
               </button>
             </div>
           )}
@@ -1146,21 +1275,45 @@ export function CroquiWorkspace({
                 };
                 const streetName = (edge.streetName || edge.label || "RUA").toUpperCase();
                 const name = outwardEdgeLabel(start, end, plotCenter, 20);
+                const streetOffset = layoutOffsets.streetTexts[edge.fromVertex] || { x: 0, y: 0 };
+                const streetX = name.x + streetOffset.x;
+                const streetY = name.y + streetOffset.y;
                 return (
                   <g key={`street-${edge.fromVertex}-${edge.toVertex}-${index}`}>
                     <path d={pathAt(11)} fill="none" stroke="#111" strokeWidth="1" />
                     <path d={pathAt(44)} fill="none" stroke="#111" strokeWidth="1" />
                     <text
-                      x={name.x}
-                      y={name.y}
+                      x={streetX}
+                      y={streetY}
                       textAnchor="middle"
                       dominantBaseline="middle"
                       fontSize={streetLabelFontSize(streetName)}
                       fontWeight="400"
-                      transform={`rotate(${name.angle} ${name.x} ${name.y})`}
+                      transform={`rotate(${name.angle} ${streetX} ${streetY})`}
                     >
                       {streetName.slice(0, 38)}
                     </text>
+                    {editingLayout && (
+                      <circle
+                        data-editor-only="true"
+                        cx={streetX}
+                        cy={streetY}
+                        r="5.5"
+                        fill="#f28c18"
+                        stroke="white"
+                        strokeWidth="1.5"
+                        style={{ cursor: "move", touchAction: "none" }}
+                        onPointerDown={(event) =>
+                          beginLayoutDrag(
+                            { kind: "streetText", index: edge.fromVertex },
+                            event,
+                          )
+                        }
+                        onPointerMove={moveLayoutItem}
+                        onPointerUp={endLayoutDrag}
+                        onPointerCancel={endLayoutDrag}
+                      />
+                    )}
                   </g>
                 );
               })}
@@ -1172,15 +1325,43 @@ export function CroquiWorkspace({
               strokeWidth="2.2"
             />
             {settings.showBuilding && geometry.buildings.length > 0
-              ? geometry.buildings.map((building, index) => (
-                  <polygon
-                    key={`building-shape-${index}`}
-                    points={building.map((point) => `${point.x},${point.y}`).join(" ")}
-                    fill="url(#buildingHatch)"
-                    stroke="#7b8388"
-                    strokeWidth="1"
-                  />
-                ))
+              ? geometry.buildings.map((building, index) => {
+                  const center = building.reduce(
+                    (result, point) => ({
+                      x: result.x + point.x / building.length,
+                      y: result.y + point.y / building.length,
+                    }),
+                    { x: 0, y: 0 },
+                  );
+                  return (
+                    <g key={`building-shape-${index}`}>
+                      <polygon
+                        points={building.map((point) => `${point.x},${point.y}`).join(" ")}
+                        fill="url(#buildingHatch)"
+                        stroke="#7b8388"
+                        strokeWidth="1"
+                      />
+                      {editingLayout && (
+                        <circle
+                          data-editor-only="true"
+                          cx={center.x}
+                          cy={center.y}
+                          r="6"
+                          fill="#f28c18"
+                          stroke="white"
+                          strokeWidth="1.5"
+                          style={{ cursor: "move", touchAction: "none" }}
+                          onPointerDown={(event) =>
+                            beginLayoutDrag({ kind: "building", index }, event)
+                          }
+                          onPointerMove={moveLayoutItem}
+                          onPointerUp={endLayoutDrag}
+                          onPointerCancel={endLayoutDrag}
+                        />
+                      )}
+                    </g>
+                  );
+                })
               : null}
             {settings.showBuilding &&
             geometry.buildings.length === 0 &&
@@ -1196,6 +1377,28 @@ export function CroquiWorkspace({
                 transform={`rotate(${fallbackBuildingAngle} ${buildingCenter.x} ${buildingCenter.y})`}
               />
             ) : null}
+            {editingLayout &&
+            settings.showBuilding &&
+            geometry.buildings.length === 0 &&
+            effectiveData.builtArea &&
+            effectiveData.builtArea > 0 ? (
+              <circle
+                data-editor-only="true"
+                cx={buildingCenter.x}
+                cy={buildingCenter.y}
+                r="6"
+                fill="#f28c18"
+                stroke="white"
+                strokeWidth="1.5"
+                style={{ cursor: "move", touchAction: "none" }}
+                onPointerDown={(event) =>
+                  beginLayoutDrag({ kind: "building", index: 0 }, event)
+                }
+                onPointerMove={moveLayoutItem}
+                onPointerUp={endLayoutDrag}
+                onPointerCancel={endLayoutDrag}
+              />
+            ) : null}
 
             {geometry.edges.map((edge, index) => {
               const start = geometry.points[edge.fromVertex];
@@ -1208,12 +1411,17 @@ export function CroquiWorkspace({
                 edge.isStreet ? -13 : 13,
               );
               const confrontant = outwardEdgeLabel(start, end, plotCenter, 34);
+              const textOffset = layoutOffsets.edgeTexts[index] || { x: 0, y: 0 };
+              const measurementX = measurement.x + textOffset.x;
+              const measurementY = measurement.y + textOffset.y;
+              const confrontantX = confrontant.x + textOffset.x;
+              const confrontantY = confrontant.y + textOffset.y;
               return (
                 <g key={`edge-details-${index}`}>
                   {edge.measurement !== null && (
                     <text
-                      x={measurement.x}
-                      y={measurement.y}
+                      x={measurementX}
+                      y={measurementY}
                       textAnchor="middle"
                       dominantBaseline="middle"
                       fontSize="9"
@@ -1221,15 +1429,15 @@ export function CroquiWorkspace({
                       paintOrder="stroke"
                       stroke="white"
                       strokeWidth="3"
-                      transform={`rotate(${measurement.angle} ${measurement.x} ${measurement.y})`}
+                      transform={`rotate(${measurement.angle} ${measurementX} ${measurementY})`}
                     >
                       {formatMeasurement(edge.measurement)} m
                     </text>
                   )}
                   {!edge.isStreet && edge.label && (
                     <text
-                      x={confrontant.x}
-                      y={confrontant.y}
+                      x={confrontantX}
+                      y={confrontantY}
                       textAnchor="middle"
                       dominantBaseline="middle"
                       fontSize="8.2"
@@ -1237,10 +1445,28 @@ export function CroquiWorkspace({
                       paintOrder="stroke"
                       stroke="white"
                       strokeWidth="3"
-                      transform={`rotate(${confrontant.angle} ${confrontant.x} ${confrontant.y})`}
+                      transform={`rotate(${confrontant.angle} ${confrontantX} ${confrontantY})`}
                     >
                       {edge.label.toUpperCase().slice(0, 38)}
                     </text>
+                  )}
+                  {editingLayout && (
+                    <circle
+                      data-editor-only="true"
+                      cx={(measurementX + confrontantX) / 2}
+                      cy={(measurementY + confrontantY) / 2}
+                      r="5.5"
+                      fill="#f28c18"
+                      stroke="white"
+                      strokeWidth="1.5"
+                      style={{ cursor: "move", touchAction: "none" }}
+                      onPointerDown={(event) =>
+                        beginLayoutDrag({ kind: "edgeText", index }, event)
+                      }
+                      onPointerMove={moveLayoutItem}
+                      onPointerUp={endLayoutDrag}
+                      onPointerCancel={endLayoutDrag}
+                    />
                   )}
                 </g>
               );
@@ -1300,7 +1526,7 @@ export function CroquiWorkspace({
                 stroke="#111"
                 strokeWidth="0.5"
               />
-              {(hasVertexCoordinates ? [36, 98, 160] : [44]).map((offset) => (
+              {(hasVertexCoordinates ? [28, 78, 128] : [30]).map((offset) => (
                 <line
                   key={`perimeter-column-${offset}`}
                   x1={perimeterTable.x + offset}
@@ -1312,29 +1538,29 @@ export function CroquiWorkspace({
                 />
               ))}
               <text
-                x={perimeterTable.x + (hasVertexCoordinates ? 18 : 22)}
-                y={perimeterTable.y + 11.5}
+                x={perimeterTable.x + (hasVertexCoordinates ? 14 : 15)}
+                y={perimeterTable.y + 9}
                 textAnchor="middle"
-                fontSize="6.5"
+                fontSize="5.5"
                 fontWeight="500"
               >
                 PONTO
               </text>
               {hasVertexCoordinates && (
                 <>
-                  <text x={perimeterTable.x + 67} y={perimeterTable.y + 11.5} textAnchor="middle" fontSize="6.5">
+                  <text x={perimeterTable.x + 53} y={perimeterTable.y + 9} textAnchor="middle" fontSize="5.5">
                     COORD. X
                   </text>
-                  <text x={perimeterTable.x + 129} y={perimeterTable.y + 11.5} textAnchor="middle" fontSize="6.5">
+                  <text x={perimeterTable.x + 103} y={perimeterTable.y + 9} textAnchor="middle" fontSize="5.5">
                     COORD. Y
                   </text>
                 </>
               )}
               <text
-                x={perimeterTable.x + (hasVertexCoordinates ? 178.5 : 77)}
-                y={perimeterTable.y + 11.5}
+                x={perimeterTable.x + (hasVertexCoordinates ? 146 : 56)}
+                y={perimeterTable.y + 9}
                 textAnchor="middle"
-                fontSize="6.5"
+                fontSize="5.5"
               >
                 DIST.
               </text>
@@ -1356,28 +1582,28 @@ export function CroquiWorkspace({
                       />
                     )}
                     <text
-                      x={perimeterTable.x + (hasVertexCoordinates ? 18 : 22)}
-                      y={rowY + 9.5}
+                      x={perimeterTable.x + (hasVertexCoordinates ? 14 : 15)}
+                      y={rowY + 7.8}
                       textAnchor="middle"
-                      fontSize="6.7"
+                      fontSize="5.7"
                     >
                       P{row.from + 1}
                     </text>
                     {hasVertexCoordinates && (
                       <>
-                        <text x={perimeterTable.x + 67} y={rowY + 9.5} textAnchor="middle" fontSize="6.4">
+                        <text x={perimeterTable.x + 53} y={rowY + 7.8} textAnchor="middle" fontSize="5.4">
                           {row.coordinateX}
                         </text>
-                        <text x={perimeterTable.x + 129} y={rowY + 9.5} textAnchor="middle" fontSize="6.4">
+                        <text x={perimeterTable.x + 103} y={rowY + 7.8} textAnchor="middle" fontSize="5.4">
                           {row.coordinateY}
                         </text>
                       </>
                     )}
                     <text
-                      x={perimeterTable.x + (hasVertexCoordinates ? 178.5 : 77)}
-                      y={rowY + 9.5}
+                      x={perimeterTable.x + (hasVertexCoordinates ? 146 : 56)}
+                      y={rowY + 7.8}
                       textAnchor="middle"
-                      fontSize="6.7"
+                      fontSize="5.7"
                     >
                       {row.edge?.measurement === null || row.edge?.measurement === undefined
                         ? "-"
@@ -1386,7 +1612,58 @@ export function CroquiWorkspace({
                   </g>
                 );
               })}
+              {editingLayout && (
+                <g data-editor-only="true">
+                  <circle
+                    cx={perimeterTable.x + 4}
+                    cy={perimeterTable.y + 4}
+                    r="5.5"
+                    fill="#f28c18"
+                    stroke="white"
+                    strokeWidth="1.5"
+                    style={{ cursor: "move", touchAction: "none" }}
+                    onPointerDown={(event) =>
+                      beginLayoutDrag({ kind: "table" }, event)
+                    }
+                    onPointerMove={moveLayoutItem}
+                    onPointerUp={endLayoutDrag}
+                    onPointerCancel={endLayoutDrag}
+                  />
+                </g>
+              )}
             </g>
+
+            {editingLayout && (
+              <g data-editor-only="true">
+                <circle
+                  cx={plotCenter.x}
+                  cy={plotCenter.y}
+                  r="7"
+                  fill="#f28c18"
+                  stroke="white"
+                  strokeWidth="1.8"
+                  style={{ cursor: "move", touchAction: "none" }}
+                  onPointerDown={(event) =>
+                    beginLayoutDrag({ kind: "plot" }, event)
+                  }
+                  onPointerMove={moveLayoutItem}
+                  onPointerUp={endLayoutDrag}
+                  onPointerCancel={endLayoutDrag}
+                />
+                <text
+                  x={plotCenter.x + 10}
+                  y={plotCenter.y + 3}
+                  fontSize="6.5"
+                  fontWeight="700"
+                  fill="#b65d00"
+                  paintOrder="stroke"
+                  stroke="white"
+                  strokeWidth="2"
+                >
+                  MOVER TERRENO
+                </text>
+              </g>
+            )}
 
             {editingVertices &&
               geometry.points.map((point, index) => (

@@ -26,6 +26,36 @@ function validVertexOffsets(value: unknown) {
   );
 }
 
+function validLayoutPoint(value: unknown) {
+  if (!value || typeof value !== "object") return false;
+  const point = value as { x?: unknown; y?: unknown };
+  return (
+    typeof point.x === "number" &&
+    Number.isFinite(point.x) &&
+    Math.abs(point.x) <= 1000 &&
+    typeof point.y === "number" &&
+    Number.isFinite(point.y) &&
+    Math.abs(point.y) <= 1000
+  );
+}
+
+function validLayoutOffsets(value: unknown) {
+  if (!value || typeof value !== "object") return false;
+  const offsets = value as Record<string, unknown>;
+  const validArray = (item: unknown, maximum: number) =>
+    Array.isArray(item) &&
+    item.length >= 1 &&
+    item.length <= maximum &&
+    item.every(validLayoutPoint);
+  return (
+    validLayoutPoint(offsets.plot) &&
+    validLayoutPoint(offsets.table) &&
+    validArray(offsets.buildings, 5) &&
+    validArray(offsets.edgeTexts, 12) &&
+    validArray(offsets.streetTexts, 12)
+  );
+}
+
 function validDataOverrides(value: unknown) {
   if (!value || typeof value !== "object") return false;
   const overrides = value as Record<string, unknown>;
@@ -103,7 +133,8 @@ export async function POST(request: Request) {
         !validDataOverrides(settings.dataOverrides)) ||
       typeof settings.showBuilding !== "boolean" ||
       typeof settings.approximationNotice !== "boolean" ||
-      !validVertexOffsets(settings.vertexOffsets)
+      !validVertexOffsets(settings.vertexOffsets) ||
+      !validLayoutOffsets(settings.layoutOffsets)
     ) {
       return NextResponse.json({ error: "Dados do croqui inválidos." }, { status: 400 });
     }
