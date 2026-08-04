@@ -7,6 +7,7 @@ export type UrbanSketchBoundaryOverride = {
 };
 
 export type UrbanSketchDataOverrides = {
+  requestNumber: string;
   claimantName: string;
   propertyAddress: string;
   block: string;
@@ -58,6 +59,7 @@ export function createSketchDataOverrides(
   saved?: UrbanSketchDataOverrides,
 ): UrbanSketchDataOverrides {
   return {
+    requestNumber: saved?.requestNumber ?? data.requestNumber,
     claimantName: saved?.claimantName ?? data.claimantName,
     propertyAddress: saved?.propertyAddress ?? data.propertyAddress,
     block: saved?.block ?? data.block,
@@ -84,6 +86,7 @@ export function applySketchDataOverrides(
   if (!overrides) return data;
   return {
     ...data,
+    requestNumber: overrides.requestNumber,
     claimantName: overrides.claimantName,
     propertyAddress: overrides.propertyAddress,
     block: overrides.block,

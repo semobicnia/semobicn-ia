@@ -12,6 +12,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   boundaryLabels,
   type PlotEdge,
+  type PlotDrawingPoint,
   type PlotGeometry,
   type PlotVertex,
   type TopographicData,
@@ -63,7 +64,7 @@ function readableEdgeAngle(start: DrawingPoint, end: DrawingPoint) {
   return angle;
 }
 
-function scaledVertices(vertices: PlotVertex[]) {
+function createPlotScale(vertices: PlotVertex[]) {
   const minX = Math.min(...vertices.map((point) => point.x));
   const maxX = Math.max(...vertices.map((point) => point.x));
   const minY = Math.min(...vertices.map((point) => point.y));
@@ -71,10 +72,10 @@ function scaledVertices(vertices: PlotVertex[]) {
   const width = Math.max(maxX - minX, 1);
   const height = Math.max(maxY - minY, 1);
   const scale = Math.min(220 / width, 145 / height);
-  return vertices.map((point) => ({
+  return (point: PlotDrawingPoint) => ({
     x: 42 + (point.x - minX) * scale + (220 - width * scale) / 2,
     y: 63 + (point.y - minY) * scale + (145 - height * scale) / 2,
-  }));
+  });
 }
 
 function edgeControl(
@@ -110,6 +111,7 @@ function edgeControl(
 
 function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
   const dotPatternId = useId().replaceAll(":", "");
+  const buildingPatternId = useId().replaceAll(":", "");
   if (geometry.vertices.length < 3) {
     return (
       <div className="test-sketch-empty">
@@ -118,7 +120,11 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
       </div>
     );
   }
-  const points = scaledVertices(geometry.vertices);
+  const scalePoint = createPlotScale(geometry.vertices);
+  const points = geometry.vertices.map(scalePoint);
+  const buildingPolygons = geometry.buildings.map((building) =>
+    building.vertices.map(scalePoint),
+  );
   const centroid = points.reduce(
     (total, point) => ({
       x: total.x + point.x / points.length,
@@ -183,6 +189,15 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
             patternUnits="userSpaceOnUse"
           >
             <circle cx="2" cy="2" r="0.7" fill="#7c858b" />
+          </pattern>
+          <pattern
+            id={buildingPatternId}
+            width="6"
+            height="6"
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(25)"
+          >
+            <line x1="0" y1="0" x2="0" y2="6" stroke="#8b9297" strokeWidth="0.7" />
           </pattern>
         </defs>
         <rect width="460" height="260" rx="10" fill="#fbfcfd" />
@@ -290,6 +305,24 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
           strokeWidth="2.2"
           strokeLinejoin="round"
         />
+        {buildingPolygons.map((building, index) => (
+          <polygon
+            key={`building-${index}`}
+            points={building.map((point) => `${point.x},${point.y}`).join(" ")}
+            fill={`url(#${buildingPatternId})`}
+            stroke="#777f84"
+            strokeWidth="1"
+          />
+        ))}
+        {geometry.northAngle !== null && (
+          <g transform={`translate(24 31) rotate(${geometry.northAngle})`}>
+            <text x="0" y="-17" textAnchor="middle" fontSize="8" fontWeight="700">
+              N
+            </text>
+            <line x1="0" y1="12" x2="0" y2="-10" stroke="#111" strokeWidth="1" />
+            <path d="M0 -13 L-3 -7 L0 -9 L3 -7 Z" fill="#111" />
+          </g>
+        )}
         {points.map((point, index) => (
           <g key={`plot-point-${index}`}>
             <circle cx={point.x} cy={point.y} r="1.6" fill="#111" />
@@ -818,6 +851,7 @@ export function ExtractionTestLab() {
               {item.data && (
                 <>
                   <div className="test-data-grid">
+                    <span><small>Núm. requerimento</small><b>{item.data.requestNumber || "—"}</b></span>
                     <span><small>Posseiro</small><b>{item.data.claimantName || "—"}</b></span>
                     <span><small>CPF/CNPJ</small><b>{item.data.cpf || "—"}</b></span>
                     <span><small>BCI</small><b>{item.data.bci || "—"}</b></span>
@@ -825,6 +859,9 @@ export function ExtractionTestLab() {
                     <span><small>Área do terreno</small><b>{formatNumber(item.data.landArea)} m²</b></span>
                     <span><small>Área construída</small><b>{formatNumber(item.data.builtArea)} m²</b></span>
                     <span className="wide"><small>Endereço</small><b>{item.data.propertyAddress || "—"} · {item.data.neighborhood || "—"}</b></span>
+                    <span><small>Utilização</small><b>{item.data.propertyUse || "—"}</b></span>
+                    <span><small>Delimitação</small><b>{item.data.delimitation || "—"}</b></span>
+                    <span className="wide"><small>Serviços e pavimentação</small><b>{item.data.improvements.join(", ") || "—"}</b></span>
                   </div>
                   <div className="test-boundaries">
                     {item.data.boundaries.map((boundary) => (

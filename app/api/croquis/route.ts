@@ -33,6 +33,7 @@ function validDataOverrides(value: unknown) {
     (typeof area === "number" && Number.isFinite(area) && area >= 0);
   const validSides = new Set(["front", "right", "left", "back"]);
   return (
+    typeof overrides.requestNumber === "string" &&
     typeof overrides.claimantName === "string" &&
     typeof overrides.propertyAddress === "string" &&
     typeof overrides.block === "string" &&

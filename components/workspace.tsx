@@ -827,6 +827,11 @@ export function Workspace({
                       onChange={(value) => update("lot", value)}
                     />
                     <Field
+                      label="Número do requerimento"
+                      value={data.requestNumber}
+                      onChange={(value) => update("requestNumber", value)}
+                    />
+                    <Field
                       label="BCI"
                       value={data.bci}
                       onChange={(value) => update("bci", value)}

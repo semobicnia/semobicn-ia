@@ -7,6 +7,11 @@ const schema = {
   type: "object",
   additionalProperties: false,
   properties: {
+    sourceLayout: {
+      type: "string",
+      enum: ["free_sketch", "structured_form"],
+    },
+    requestNumber: { type: "string" },
     bci: { type: "string" },
     claimantName: { type: "string" },
     claimantSex: {
@@ -56,7 +61,7 @@ const schema = {
         },
         vertices: {
           type: "array",
-          minItems: 3,
+          minItems: 0,
           maxItems: 12,
           items: {
             type: "object",
@@ -72,7 +77,7 @@ const schema = {
         },
         edges: {
           type: "array",
-          minItems: 3,
+          minItems: 0,
           maxItems: 12,
           items: {
             type: "object",
@@ -99,6 +104,36 @@ const schema = {
             ],
           },
         },
+        buildings: {
+          type: "array",
+          maxItems: 5,
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              vertices: {
+                type: "array",
+                minItems: 3,
+                maxItems: 12,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    x: { type: "number", minimum: 0, maximum: 1000 },
+                    y: { type: "number", minimum: 0, maximum: 1000 },
+                  },
+                  required: ["x", "y"],
+                },
+              },
+            },
+            required: ["vertices"],
+          },
+        },
+        northAngle: {
+          type: ["number", "null"],
+          minimum: -180,
+          maximum: 180,
+        },
         confidence: { type: "number", minimum: 0, maximum: 1 },
         reviewNotes: { type: "array", items: { type: "string" } },
       },
@@ -106,6 +141,8 @@ const schema = {
         "shapeType",
         "vertices",
         "edges",
+        "buildings",
+        "northAngle",
         "confidence",
         "reviewNotes",
       ],
@@ -114,6 +151,8 @@ const schema = {
     reviewNotes: { type: "array", items: { type: "string" } },
   },
   required: [
+    "sourceLayout",
+    "requestNumber",
     "bci",
     "claimantName",
     "claimantSex",
@@ -171,7 +210,14 @@ export async function extractTopographicData(
   const prompt = `Analise visualmente o croqui imobiliário enviado como foto ou PDF e extraia os dados para um documento de Informações Topográficas da SEMOBI de Coelho Neto - MA.
 
 Regras obrigatórias:
+- Use sourceLayout="structured_form" quando o arquivo utilizar o gabarito SEMOBI IA com campos e caixas impressas; nos demais croquis, use sourceLayout="free_sketch".
 - O croqui pode estar manuscrito a caneta ou lápis, com letra cursiva, traço fraco, rasuras, sombras, perspectiva, rotação ou baixa nitidez. Examine toda a imagem ou todas as páginas antes de extrair.
+- O arquivo também pode usar o gabarito estruturado SEMOBI IA. Nesse gabarito, leia os campos NÚM. REQUERIMENTO, BCI, LOTE, QUADRA, POSSEIRO, sexo, CPF/CNPJ e ENDEREÇO somente quando estiverem preenchidos. Extraia NÚM. REQUERIMENTO em requestNumber.
+- No gabarito, as molduras dos campos, o grande retângulo da área de desenho, o logotipo SEMOBI IA e as caixas impressas de exemplo EDIFICAÇÃO e NORTE são elementos fixos do formulário. Nunca os interprete como limites do terreno, edificação, rua, coordenadas ou seta real do norte.
+- As pequenas linhas hachuradas com a palavra LINHAS e a pequena seta com a palavra SETA dentro das legendas são apenas exemplos de preenchimento. Ignore-as. Considere edificação e norte somente quando forem desenhados na área grande reservada ao croqui.
+- Se a área grande do gabarito estiver sem um desenho real do terreno, use shapeType="unknown", retorne vertices e edges vazios e registre em plotGeometry.reviewNotes que o croqui não foi desenhado. Não invente um polígono a partir da borda do formulário.
+- Nos campos MASCULINO e FEMININO, considere selecionada apenas a opção cuja caixa tenha X, visto, preenchimento ou outra marca manuscrita inequívoca. Caixas vazias não indicam sexo.
+- Na seção UTILIZAÇÃO, considere somente caixas realmente marcadas. Mapeie EDIFIC. DE ALVENARIA ou EDIFIC. DE TAIPA/ADOBE para propertyUse; MURO ALVENARIA ou CERCA DE MADEIRA para delimitation; e os serviços/pavimentos marcados para improvements. Não inclua opções com caixas vazias.
 - Diferencie as linhas do terreno de setas, cotas, textos, carimbos e outros traços auxiliares.
 - Associe cada nome de rua, vizinho e medida ao lado mais próximo do desenho. Confira vírgulas e pontos decimais e confronte as medidas com a área indicada.
 - Quando houver mais de uma leitura plausível, não escolha silenciosamente: use o valor mais legível e registre a alternativa ou a dúvida em reviewNotes para correção humana.
@@ -182,9 +228,8 @@ Regras obrigatórias:
 - A nacionalidade padrão é "brasileira", exceto quando a mensagem complementar disser outra.
 - A residência é o mesmo endereço do imóvel, exceto quando a mensagem complementar informar outro endereço.
 - Em qualquer limite sem nome de vizinho ou rua, use exatamente "TERRENOS DE TERCEIROS".
-- Delimitação padrão: "Muro de alvenaria".
-- Benfeitorias padrão: Pavimentação asfáltica, Iluminação pública e Rede de abastecimento de água.
-- Se a área construída estiver ausente, marcada com traço ou zero, use 0, deixe builtAreaInWords vazio e preencha propertyUse com "Sem edificação".
+- Em croqui livre, a delimitação padrão é "Muro de alvenaria" e as benfeitorias padrão são Pavimentação asfáltica, Iluminação pública e Rede de abastecimento de água. No gabarito estruturado, não aplique esses padrões: use somente as opções efetivamente marcadas e deixe delimitation vazio ou improvements como lista vazia quando nada estiver assinalado.
+- Se a área construída estiver ausente, marcada com traço ou zero e não houver edificação desenhada nem opção de edificação marcada, use 0, deixe builtAreaInWords vazio e preencha propertyUse com "Sem edificação". Se houver edificação indicada mas sua área não estiver informada, use null em builtArea, preserve o tipo em propertyUse e registre a ausência da metragem em reviewNotes.
 - Escreva landAreaInWords e builtAreaInWords por extenso em português, incluindo "metros quadrados".
 - Escreva cada medida linear por extenso em measurementInWords, convertendo a parte decimal para centímetros.
 - Use a data que aparece no croqui, em YYYY-MM-DD. Quando não houver data, retorne string vazia; o sistema usará a data de criação.
@@ -197,6 +242,8 @@ Regras obrigatórias:
 - Marque isStreet=true em toda face que confrontar com rua, avenida, travessa ou estrada. Preserve o nome em streetName e a posição correta em relação ao terreno.
 - Se a mesma rua confrontar com duas ou mais faces, marque todas essas arestas como rua e repita o mesmo streetName nelas, mantendo a sequência e a mudança de direção observadas no original.
 - Quando a borda do terreno ou a rua for curva, marque curved=true. Use curveBulge entre -1 e 1 para indicar a curvatura aproximada: valor positivo curva para o interior do polígono visual e negativo para o exterior; use 0 em linha reta.
+- Quando houver uma ou mais edificações desenhadas ou hachuradas dentro do terreno, registre cada contorno em plotGeometry.buildings com coordenadas normalizadas de 0 a 1000 na mesma referência usada pelos vértices do terreno. Não use a caixa impressa da legenda EDIFICAÇÃO.
+- Quando houver uma seta do norte desenhada na área do croqui, retorne plotGeometry.northAngle em graus: 0 aponta para o topo da página, 90 para a direita, -90 para a esquerda e 180 para baixo. Sem seta real, retorne null. Não use a seta impressa na legenda NORTE.
 - Classifique shapeType como square, rectangle, trapezoid ou irregular. Use irregular para qualquer terreno com mais de quatro faces. Só use unknown quando o contorno estiver realmente ilegível.
 - A geometria é uma representação aproximada para revisão humana. Registre em plotGeometry.reviewNotes qualquer vértice, rua ou curvatura duvidosa.
 

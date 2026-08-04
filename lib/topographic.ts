@@ -35,12 +35,22 @@ export type PlotShapeType =
   | "trapezoid"
   | "irregular"
   | "unknown";
+export type SourceLayout = "free_sketch" | "structured_form";
 
 export type PlotVertex = {
   x: number;
   y: number;
   coordinateX: string;
   coordinateY: string;
+};
+
+export type PlotDrawingPoint = {
+  x: number;
+  y: number;
+};
+
+export type PlotBuilding = {
+  vertices: PlotDrawingPoint[];
 };
 
 export type PlotEdge = {
@@ -58,11 +68,15 @@ export type PlotGeometry = {
   shapeType: PlotShapeType;
   vertices: PlotVertex[];
   edges: PlotEdge[];
+  buildings: PlotBuilding[];
+  northAngle: number | null;
   confidence: number;
   reviewNotes: string[];
 };
 
 export type TopographicData = {
+  sourceLayout: SourceLayout;
+  requestNumber: string;
   bci: string;
   claimantName: string;
   claimantSex: SexCode;
@@ -141,6 +155,8 @@ export const boundaryLabels: Record<BoundarySide, string> = {
 };
 
 export const initialTopographicData: TopographicData = {
+  sourceLayout: "free_sketch",
+  requestNumber: "",
   bci: "",
   claimantName: "",
   claimantSex: "not_informed",
@@ -180,6 +196,8 @@ export const initialTopographicData: TopographicData = {
     shapeType: "unknown",
     vertices: [],
     edges: [],
+    buildings: [],
+    northAngle: null,
     confidence: 0,
     reviewNotes: [],
   },
@@ -190,6 +208,8 @@ export const initialTopographicData: TopographicData = {
 };
 
 export const sampleTopographicData: TopographicData = {
+  sourceLayout: "free_sketch",
+  requestNumber: "",
   bci: "",
   claimantName: "MARIZA SILVA DOS SANTOS",
   claimantSex: "female",
@@ -290,6 +310,8 @@ export const sampleTopographicData: TopographicData = {
         curveBulge: 0,
       },
     ],
+    buildings: [],
+    northAngle: null,
     confidence: 0.9,
     reviewNotes: [],
   },
@@ -378,6 +400,23 @@ function normalizePlotGeometry(value: Partial<PlotGeometry> | undefined) {
         }];
       })
     : [];
+  const buildings = Array.isArray(value?.buildings)
+    ? value.buildings.slice(0, 5).flatMap((building) => {
+        if (!building || !Array.isArray(building.vertices)) return [];
+        const buildingVertices = building.vertices.slice(0, 12).flatMap((point) => {
+          if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+            return [];
+          }
+          return [{
+            x: Math.max(0, Math.min(1000, point.x)),
+            y: Math.max(0, Math.min(1000, point.y)),
+          }];
+        });
+        return buildingVertices.length >= 3
+          ? [{ vertices: buildingVertices }]
+          : [];
+      })
+    : [];
 
   return {
     shapeType:
@@ -386,6 +425,12 @@ function normalizePlotGeometry(value: Partial<PlotGeometry> | undefined) {
         : "unknown",
     vertices,
     edges,
+    buildings,
+    northAngle:
+      typeof value?.northAngle === "number" &&
+      Number.isFinite(value.northAngle)
+        ? Math.max(-180, Math.min(180, value.northAngle))
+        : null,
     confidence:
       typeof value?.confidence === "number" &&
       Number.isFinite(value.confidence)
@@ -401,6 +446,11 @@ export function normalizeTopographicData(
   const merged: TopographicData = {
     ...initialTopographicData,
     ...data,
+    sourceLayout:
+      data.sourceLayout === "structured_form"
+        ? "structured_form"
+        : "free_sketch",
+    requestNumber: data.requestNumber?.trim() || "",
     claimantSex: normalizeSex(data.claimantSex),
     boundaries: initialTopographicData.boundaries.map((fallback) => {
       const found = data.boundaries?.find(
@@ -443,7 +493,9 @@ export function normalizeTopographicData(
   }
 
   merged.nationality ||= "brasileira";
-  merged.delimitation ||= "Muro de alvenaria";
+  if (merged.sourceLayout === "free_sketch") {
+    merged.delimitation ||= "Muro de alvenaria";
+  }
   merged.bci = merged.bci?.trim() || "";
   merged.documentDate =
     merged.documentDate?.trim() || currentDocumentDate();

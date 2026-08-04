@@ -687,6 +687,15 @@ export function CroquiWorkspace({
               </p>
             </div>
             <label className="field">
+              <span>Número do requerimento</span>
+              <input
+                value={dataOverrides.requestNumber}
+                onChange={(event) =>
+                  updateDataOverride("requestNumber", event.target.value)
+                }
+              />
+            </label>
+            <label className="field">
               <span>Nome do posseiro</span>
               <input
                 value={dataOverrides.claimantName}
