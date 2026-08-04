@@ -54,7 +54,9 @@ function formatMeasurement(value: number) {
   }).format(value);
 }
 
-function readableEdgeAngle(start: PlotVertex, end: PlotVertex) {
+type DrawingPoint = Pick<PlotVertex, "x" | "y">;
+
+function readableEdgeAngle(start: DrawingPoint, end: DrawingPoint) {
   let angle = (Math.atan2(end.y - start.y, end.x - start.x) * 180) / Math.PI;
   if (angle > 90) angle -= 180;
   if (angle < -90) angle += 180;
@@ -76,9 +78,9 @@ function scaledVertices(vertices: PlotVertex[]) {
 }
 
 function edgeControl(
-  start: PlotVertex,
-  end: PlotVertex,
-  centroid: PlotVertex,
+  start: DrawingPoint,
+  end: DrawingPoint,
+  centroid: DrawingPoint,
   edge?: PlotEdge,
 ) {
   const middle = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
@@ -146,12 +148,18 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
     from: index,
     to: (index + 1) % points.length,
     edge: edgeFor(index),
+    coordinateX: geometry.vertices[index]?.coordinateX || "",
+    coordinateY: geometry.vertices[index]?.coordinateY || "",
   }));
-  const tableX = 286;
+  const hasCoordinates = distanceRows.every(
+    (row) => row.coordinateX && row.coordinateY,
+  );
+  const tableX = hasCoordinates ? 270 : 340;
   const tableY = 10;
-  const tableWidth = 106;
+  const tableWidth = hasCoordinates ? 182 : 110;
+  const tableHeaderHeight = 17;
   const tableRowHeight = 14;
-  const tableHeight = 8 + distanceRows.length * tableRowHeight;
+  const tableHeight = tableHeaderHeight + distanceRows.length * tableRowHeight;
 
   return (
     <div className="test-sketch">
@@ -163,7 +171,7 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
         </span>
       </div>
       <svg
-        viewBox="0 0 400 260"
+        viewBox="0 0 460 260"
         role="img"
         aria-label={`Representação aproximada do terreno em formato ${shapeLabels[geometry.shapeType]}`}
       >
@@ -177,7 +185,7 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
             <circle cx="2" cy="2" r="0.7" fill="#7c858b" />
           </pattern>
         </defs>
-        <rect width="400" height="260" rx="10" fill="#fbfcfd" />
+        <rect width="460" height="260" rx="10" fill="#fbfcfd" />
         {geometry.edges
           .filter(
             (edge) =>
@@ -253,13 +261,13 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
                   d={upperPath}
                   fill="none"
                   stroke="#111"
-                  strokeWidth="1.4"
+                  strokeWidth="1"
                 />
                 <path
                   d={lowerPath}
                   fill="none"
                   stroke="#111"
-                  strokeWidth="1.4"
+                  strokeWidth="1"
                 />
                 <text
                   x={labelPoint.x}
@@ -267,7 +275,7 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontSize="7"
-                  fontWeight="800"
+                  fontWeight="400"
                   transform={`rotate(${angle} ${labelPoint.x} ${labelPoint.y})`}
                 >
                   {label.toUpperCase().slice(0, 34)}
@@ -284,21 +292,37 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
         />
         {points.map((point, index) => (
           <g key={`plot-point-${index}`}>
-            <circle cx={point.x} cy={point.y} r="3.2" fill="#111" />
+            <circle cx={point.x} cy={point.y} r="1.6" fill="#111" />
             {(() => {
               const awayX = point.x - centroid.x;
               const awayY = point.y - centroid.y;
               const awayLength = Math.max(Math.hypot(awayX, awayY), 1);
-              const labelX = point.x + (awayX / awayLength) * 10;
-              const labelY = point.y + (awayY / awayLength) * 10;
+              const touchesStreet = geometry.edges.some(
+                (edge) =>
+                  edge.isStreet &&
+                  (edge.fromVertex === index || edge.toVertex === index),
+              );
+              const horizontalDirection = point.x < centroid.x ? -1 : 1;
+              const labelX = touchesStreet
+                ? point.x + horizontalDirection * 5
+                : point.x + (awayX / awayLength) * 9;
+              const labelY = touchesStreet
+                ? point.y
+                : point.y + (awayY / awayLength) * 9;
               return (
                 <text
                   x={labelX}
                   y={labelY}
-                  textAnchor="middle"
+                  textAnchor={
+                    touchesStreet
+                      ? horizontalDirection < 0
+                        ? "end"
+                        : "start"
+                      : "middle"
+                  }
                   dominantBaseline="middle"
                   fontSize="7.5"
-                  fontWeight="800"
+                  fontWeight="700"
                   paintOrder="stroke"
                   stroke="white"
                   strokeWidth="2.5"
@@ -361,7 +385,7 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontSize="7"
-                  fontWeight="800"
+                  fontWeight="400"
                   paintOrder="stroke"
                   stroke="white"
                   strokeWidth="3"
@@ -373,20 +397,66 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
             </g>
           );
         })}
-        <g aria-label="Tabela de distâncias entre vértices">
+        <g aria-label="Tabela de pontos e perímetro">
           <rect
             x={tableX}
             y={tableY}
             width={tableWidth}
             height={tableHeight}
-            rx="2"
             fill="white"
             fillOpacity="0.96"
-            stroke="#30383d"
-            strokeWidth="0.7"
+            stroke="#111"
+            strokeWidth="0.6"
           />
+          <line
+            x1={tableX}
+            y1={tableY + tableHeaderHeight}
+            x2={tableX + tableWidth}
+            y2={tableY + tableHeaderHeight}
+            stroke="#111"
+            strokeWidth="0.5"
+          />
+          {(hasCoordinates ? [34, 92, 150] : [44]).map((offset) => (
+            <line
+              key={`table-column-${offset}`}
+              x1={tableX + offset}
+              y1={tableY}
+              x2={tableX + offset}
+              y2={tableY + tableHeight}
+              stroke="#111"
+              strokeWidth="0.5"
+            />
+          ))}
+          <text
+            x={tableX + (hasCoordinates ? 17 : 22)}
+            y={tableY + 11.5}
+            textAnchor="middle"
+            fontSize="6.5"
+            fontWeight="500"
+          >
+            PONTO
+          </text>
+          {hasCoordinates && (
+            <>
+              <text x={tableX + 63} y={tableY + 11.5} textAnchor="middle" fontSize="6.5" fontWeight="500">
+                COORD. X
+              </text>
+              <text x={tableX + 121} y={tableY + 11.5} textAnchor="middle" fontSize="6.5" fontWeight="500">
+                COORD. Y
+              </text>
+            </>
+          )}
+          <text
+            x={tableX + (hasCoordinates ? 166 : 77)}
+            y={tableY + 11.5}
+            textAnchor="middle"
+            fontSize="6.5"
+            fontWeight="500"
+          >
+            DIST.
+          </text>
           {distanceRows.map((row, index) => {
-            const rowY = tableY + 8 + index * tableRowHeight;
+            const rowY = tableY + tableHeaderHeight + index * tableRowHeight;
             return (
               <g key={`distance-row-${row.from}-${row.to}`}>
                 {index > 0 && (
@@ -400,17 +470,36 @@ function SketchGeometryPreview({ geometry }: { geometry: PlotGeometry }) {
                   />
                 )}
                 <text
-                  x={tableX + 6}
+                  x={tableX + (hasCoordinates ? 17 : 22)}
                   y={rowY + 9.5}
-                  fontSize="7"
-                  fontWeight="700"
+                  textAnchor="middle"
+                  fontSize="6.7"
+                  fontWeight="400"
                 >
-                  {`P${row.from + 1} - P${row.to + 1} = ${
+                  {`P${row.from + 1}`}
+                </text>
+                {hasCoordinates && (
+                  <>
+                    <text x={tableX + 63} y={rowY + 9.5} textAnchor="middle" fontSize="6.7">
+                      {row.coordinateX}
+                    </text>
+                    <text x={tableX + 121} y={rowY + 9.5} textAnchor="middle" fontSize="6.7">
+                      {row.coordinateY}
+                    </text>
+                  </>
+                )}
+                <text
+                  x={tableX + (hasCoordinates ? 166 : 77)}
+                  y={rowY + 9.5}
+                  textAnchor="middle"
+                  fontSize="6.7"
+                >
+                  {
                     row.edge?.measurement === null ||
                     row.edge?.measurement === undefined
                       ? "—"
-                      : `${formatMeasurement(row.edge.measurement)} m`
-                  }`}
+                      : formatMeasurement(row.edge.measurement)
+                  }
                 </text>
               </g>
             );

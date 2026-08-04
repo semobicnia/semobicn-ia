@@ -39,6 +39,8 @@ export type PlotShapeType =
 export type PlotVertex = {
   x: number;
   y: number;
+  coordinateX: string;
+  coordinateY: string;
 };
 
 export type PlotEdge = {
@@ -241,10 +243,10 @@ export const sampleTopographicData: TopographicData = {
   plotGeometry: {
     shapeType: "trapezoid",
     vertices: [
-      { x: 190, y: 180 },
-      { x: 340, y: 170 },
-      { x: 390, y: 790 },
-      { x: 230, y: 800 },
+      { x: 190, y: 180, coordinateX: "", coordinateY: "" },
+      { x: 340, y: 170, coordinateX: "", coordinateY: "" },
+      { x: 390, y: 790, coordinateX: "", coordinateY: "" },
+      { x: 230, y: 800, coordinateX: "", coordinateY: "" },
     ],
     edges: [
       {
@@ -330,6 +332,8 @@ function normalizePlotGeometry(value: Partial<PlotGeometry> | undefined) {
         return [{
           x: Math.max(0, Math.min(1000, vertex.x)),
           y: Math.max(0, Math.min(1000, vertex.y)),
+          coordinateX: vertex.coordinateX?.trim() || "",
+          coordinateY: vertex.coordinateY?.trim() || "",
         }];
       })
     : [];

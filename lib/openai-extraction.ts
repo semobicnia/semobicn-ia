@@ -64,8 +64,10 @@ const schema = {
             properties: {
               x: { type: "number", minimum: 0, maximum: 1000 },
               y: { type: "number", minimum: 0, maximum: 1000 },
+              coordinateX: { type: "string" },
+              coordinateY: { type: "string" },
             },
-            required: ["x", "y"],
+            required: ["x", "y", "coordinateX", "coordinateY"],
           },
         },
         edges: {
@@ -189,6 +191,7 @@ Regras obrigatórias:
 - Retorne exatamente quatro limites: front, right, left e back.
 - Além dos quatro limites textuais, reconstrua a geometria visual em plotGeometry. Ela deve representar o contorno real do terreno, inclusive quando possuir 3, 5 ou mais faces.
 - Em plotGeometry.vertices, informe os vértices do terreno em ordem horária, usando coordenadas normalizadas de 0 a 1000 conforme a posição no desenho original (x cresce para a direita e y para baixo). Não inclua vértices de cotas, setas ou construções.
+- Quando o documento fornecer coordenadas topográficas ou geográficas reais para um ponto, preserve-as como texto em coordinateX e coordinateY, inclusive vírgulas e casas decimais. Quando não houver coordenadas reais, retorne string vazia nesses dois campos; nunca use as coordenadas normalizadas do desenho como coordenadas reais.
 - Preserve rigorosamente a orientação visual do contorno como ele aparece no arquivo. Não gire, espelhe, endireite nem transforme o terreno para deixá-lo horizontal ou vertical.
 - Em plotGeometry.edges, crie uma aresta para cada par consecutivo de vértices, inclusive a última ligada à primeira. Associe a cada face seu confrontante, medida e eventual rua.
 - Marque isStreet=true em toda face que confrontar com rua, avenida, travessa ou estrada. Preserve o nome em streetName e a posição correta em relação ao terreno.
