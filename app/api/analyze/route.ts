@@ -4,11 +4,14 @@ import {
   storePrivateSource,
 } from "@/lib/cloudinary";
 import { saveProcess } from "@/lib/database";
-import { extractTopographicData } from "@/lib/openai-extraction";
+import {
+  extractTopographicData,
+  isSafeExtractionMessage,
+} from "@/lib/openai-extraction";
 import { getAuthenticatedSession } from "@/lib/auth";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const acceptedTypes = new Set([
   "application/pdf",
@@ -139,16 +142,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ data, processId });
   } catch (error) {
-    const safeMessages = new Set([
-      "A chave da OpenAI ainda não foi configurada. Use o exemplo para testar a interface.",
-      "A chave da OpenAI não foi aceita.",
-      "Não foi possível analisar o croqui neste momento.",
-      "A análise não retornou dados estruturados.",
-    ]);
     const message =
-      error instanceof Error && safeMessages.has(error.message)
+      error instanceof Error && isSafeExtractionMessage(error.message)
         ? error.message
         : "Não foi possível analisar o croqui.";
+    console.error("Falha na rota de análise do croqui", error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

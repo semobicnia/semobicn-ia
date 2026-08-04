@@ -180,6 +180,23 @@ const schema = {
   ],
 };
 
+const safeExtractionMessages = new Set([
+  "A chave da OpenAI ainda não foi configurada. Use o exemplo para testar a interface.",
+  "A chave da OpenAI não foi aceita.",
+  "O modelo de análise configurado não está disponível para esta conta.",
+  "Os créditos da OpenAI estão insuficientes. Verifique o faturamento da API.",
+  "O limite temporário da OpenAI foi atingido. Aguarde alguns segundos e tente novamente.",
+  "A análise demorou além do limite. Tente novamente; se persistir, envie uma foto mais nítida.",
+  "A OpenAI não conseguiu processar este arquivo. Tente convertê-lo para JPG ou PDF.",
+  "A análise foi interrompida antes de concluir todos os campos. Tente novamente.",
+  "A análise não retornou dados estruturados.",
+  "Não foi possível analisar o croqui neste momento.",
+]);
+
+export function isSafeExtractionMessage(message: string) {
+  return safeExtractionMessages.has(message);
+}
+
 function extractOutputText(response: {
   output_text?: string;
   output?: Array<{
@@ -213,12 +230,17 @@ Regras obrigatórias:
 - Use sourceLayout="structured_form" quando o arquivo utilizar o gabarito SEMOBI IA com campos e caixas impressas; nos demais croquis, use sourceLayout="free_sketch".
 - O croqui pode estar manuscrito a caneta ou lápis, com letra cursiva, traço fraco, rasuras, sombras, perspectiva, rotação ou baixa nitidez. Examine toda a imagem ou todas as páginas antes de extrair.
 - O arquivo também pode usar o gabarito estruturado SEMOBI IA. Nesse gabarito, leia os campos NÚM. REQUERIMENTO, BCI, LOTE, QUADRA, POSSEIRO, sexo, CPF/CNPJ e ENDEREÇO somente quando estiverem preenchidos. Extraia NÚM. REQUERIMENTO em requestNumber.
-- No gabarito, as molduras dos campos, o grande retângulo da área de desenho, o logotipo SEMOBI IA e as caixas impressas de exemplo EDIFICAÇÃO e NORTE são elementos fixos do formulário. Nunca os interprete como limites do terreno, edificação, rua, coordenadas ou seta real do norte.
-- As pequenas linhas hachuradas com a palavra LINHAS e a pequena seta com a palavra SETA dentro das legendas são apenas exemplos de preenchimento. Ignore-as. Considere edificação e norte somente quando forem desenhados na área grande reservada ao croqui.
+- No gabarito, as molduras dos campos, o grande retângulo da área de desenho e o logotipo SEMOBI IA são elementos fixos. Nunca os interprete como limites do terreno, edificação ou rua.
+- As caixas EDIFICAÇÃO e NORTE são áreas de preenchimento válidas. Leia números, hachuras, setas e anotações feitos à mão dentro delas. Ignore somente os exemplos impressos: as pequenas linhas claras acompanhadas da palavra LINHAS e a pequena seta impressa acompanhada da palavra SETA.
+- Se houver uma metragem manuscrita na caixa EDIFICAÇÃO, extraia-a em builtArea mesmo que a edificação também esteja desenhada e hachurada na área principal.
+- Se houver uma seta manuscrita na caixa NORTE, use-a para northAngle. A seta impressa pequena de exemplo não conta.
 - Se a área grande do gabarito estiver sem um desenho real do terreno, use shapeType="unknown", retorne vertices e edges vazios e registre em plotGeometry.reviewNotes que o croqui não foi desenhado. Não invente um polígono a partir da borda do formulário.
 - Nos campos MASCULINO e FEMININO, considere selecionada apenas a opção cuja caixa tenha X, visto, preenchimento ou outra marca manuscrita inequívoca. Caixas vazias não indicam sexo.
 - Na seção UTILIZAÇÃO, considere somente caixas realmente marcadas. Mapeie EDIFIC. DE ALVENARIA ou EDIFIC. DE TAIPA/ADOBE para propertyUse; MURO ALVENARIA ou CERCA DE MADEIRA para delimitation; e os serviços/pavimentos marcados para improvements. Não inclua opções com caixas vazias.
 - Diferencie as linhas do terreno de setas, cotas, textos, carimbos e outros traços auxiliares.
+- Faça duas leituras visuais antes de responder: primeiro os campos e caixas do formulário; depois somente a área grande do desenho para reconstruir terreno, ruas, confrontantes, medidas e edificações.
+- Em desenhos irregulares, percorra visualmente o contorno do terreno vértice por vértice. Não confunda as duas linhas paralelas de uma rua com duas faces do terreno.
+- Um contorno manuscrito pode terminar visualmente encostado em uma rua, margem ou outro segmento sem fechar perfeitamente por causa do traço da caneta. Quando a continuidade do lote for inequívoca, feche o polígono de forma aproximada e registre essa inferência em plotGeometry.reviewNotes, em vez de descartar toda a geometria.
 - Associe cada nome de rua, vizinho e medida ao lado mais próximo do desenho. Confira vírgulas e pontos decimais e confronte as medidas com a área indicada.
 - Quando houver mais de uma leitura plausível, não escolha silenciosamente: use o valor mais legível e registre a alternativa ou a dúvida em reviewNotes para correção humana.
 - Não invente dados ilegíveis; use string vazia ou null e registre a dúvida em reviewNotes.
@@ -243,7 +265,7 @@ Regras obrigatórias:
 - Se a mesma rua confrontar com duas ou mais faces, marque todas essas arestas como rua e repita o mesmo streetName nelas, mantendo a sequência e a mudança de direção observadas no original.
 - Quando a borda do terreno ou a rua for curva, marque curved=true. Use curveBulge entre -1 e 1 para indicar a curvatura aproximada: valor positivo curva para o interior do polígono visual e negativo para o exterior; use 0 em linha reta.
 - Quando houver uma ou mais edificações desenhadas ou hachuradas dentro do terreno, registre cada contorno em plotGeometry.buildings com coordenadas normalizadas de 0 a 1000 na mesma referência usada pelos vértices do terreno. Não use a caixa impressa da legenda EDIFICAÇÃO.
-- Quando houver uma seta do norte desenhada na área do croqui, retorne plotGeometry.northAngle em graus: 0 aponta para o topo da página, 90 para a direita, -90 para a esquerda e 180 para baixo. Sem seta real, retorne null. Não use a seta impressa na legenda NORTE.
+- Quando houver uma seta do norte manuscrita na área do croqui ou na caixa NORTE, retorne plotGeometry.northAngle em graus: 0 aponta para o topo da página, 90 para a direita, -90 para a esquerda e 180 para baixo. Sem seta manuscrita real, retorne null. Não use a seta pequena impressa de exemplo.
 - Classifique shapeType como square, rectangle, trapezoid ou irregular. Use irregular para qualquer terreno com mais de quatro faces. Só use unknown quando o contorno estiver realmente ilegível.
 - A geometria é uma representação aproximada para revisão humana. Registre em plotGeometry.reviewNotes qualquer vértice, rua ou curvatura duvidosa.
 
@@ -261,53 +283,104 @@ ${supplementaryMessage.trim() || "Nenhuma."}`;
       : {
           type: "input_image",
           image_url: `data:${mimeType};base64,${encodedFile}`,
-          detail: "high",
+          detail: "auto",
         };
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-5.6-terra",
-      reasoning: { effort: "medium" },
-      input: [
-        {
-          role: "user",
-          content: [
-            { type: "input_text", text: prompt },
-            visualInput,
-          ],
-        },
-      ],
-      text: {
-        verbosity: "low",
-        format: {
-          type: "json_schema",
-          name: "topographic_information",
-          strict: true,
-          schema,
-        },
+  let response: Response;
+  try {
+    response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
       },
-    }),
-  });
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL || "gpt-5.6-terra",
+        reasoning: { effort: "medium" },
+        input: [
+          {
+            role: "user",
+            content: [
+              { type: "input_text", text: prompt },
+              visualInput,
+            ],
+          },
+        ],
+        text: {
+          verbosity: "low",
+          format: {
+            type: "json_schema",
+            name: "topographic_information",
+            strict: true,
+            schema,
+          },
+        },
+      }),
+      signal: AbortSignal.timeout(240_000),
+    });
+  } catch (error) {
+    console.error("Falha de conexão com a OpenAI", error);
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new Error(
+        "A análise demorou além do limite. Tente novamente; se persistir, envie uma foto mais nítida.",
+      );
+    }
+    throw new Error("Não foi possível analisar o croqui neste momento.");
+  }
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(
-      detail.includes("invalid_api_key")
-        ? "A chave da OpenAI não foi aceita."
-        : "Não foi possível analisar o croqui neste momento.",
-    );
+    console.error("Falha da OpenAI ao analisar croqui", {
+      status: response.status,
+      detail: detail.slice(0, 2000),
+    });
+    if (detail.includes("invalid_api_key")) {
+      throw new Error("A chave da OpenAI não foi aceita.");
+    }
+    if (detail.includes("model_not_found") || detail.includes("does not exist")) {
+      throw new Error(
+        "O modelo de análise configurado não está disponível para esta conta.",
+      );
+    }
+    if (detail.includes("insufficient_quota")) {
+      throw new Error(
+        "Os créditos da OpenAI estão insuficientes. Verifique o faturamento da API.",
+      );
+    }
+    if (response.status === 429) {
+      throw new Error(
+        "O limite temporário da OpenAI foi atingido. Aguarde alguns segundos e tente novamente.",
+      );
+    }
+    if (response.status === 408 || response.status === 504) {
+      throw new Error(
+        "A análise demorou além do limite. Tente novamente; se persistir, envie uma foto mais nítida.",
+      );
+    }
+    if (response.status === 400 && /image|file|mime|format/i.test(detail)) {
+      throw new Error(
+        "A OpenAI não conseguiu processar este arquivo. Tente convertê-lo para JPG ou PDF.",
+      );
+    }
+    throw new Error("Não foi possível analisar o croqui neste momento.");
   }
 
   const payload = (await response.json()) as Parameters<
     typeof extractOutputText
-  >[0];
+  >[0] & { status?: string; incomplete_details?: { reason?: string } };
   const outputText = extractOutputText(payload);
-  if (!outputText) throw new Error("A análise não retornou dados estruturados.");
+  if (!outputText) {
+    console.error("Resposta da OpenAI sem dados estruturados", {
+      status: payload.status,
+      incompleteReason: payload.incomplete_details?.reason,
+    });
+    if (payload.status === "incomplete") {
+      throw new Error(
+        "A análise foi interrompida antes de concluir todos os campos. Tente novamente.",
+      );
+    }
+    throw new Error("A análise não retornou dados estruturados.");
+  }
   return normalizeTopographicData(
     JSON.parse(outputText) as Partial<TopographicData>,
   );

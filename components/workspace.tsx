@@ -61,6 +61,11 @@ async function readApiResponse<T>(
       "O arquivo é grande demais para o envio. Selecione um arquivo de até 10 MB.",
     );
   }
+  if (response.status === 504 || /timeout|timed out|function invocation/i.test(text)) {
+    throw new Error(
+      "A análise demorou além do limite do servidor. Tente novamente; se persistir, envie a imagem em JPG.",
+    );
+  }
   throw new Error(fallbackMessage);
 }
 
