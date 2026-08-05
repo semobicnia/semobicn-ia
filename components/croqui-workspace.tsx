@@ -24,11 +24,13 @@ import {
   applySketchDataOverrides,
   buildSketchGeometry,
   createDefaultLayoutOffsets,
+  createEmptyBuildingVertexOffsets,
   createEmptyVertexOffsets,
   createSketchDataOverrides,
   defaultUrbanSketchSettings,
   formatMeasurement,
   normalizeLayoutOffsets,
+  normalizeBuildingVertexOffsets,
   type UrbanSketchBoundaryOverride,
   type UrbanSketchDataOverrides,
   type UrbanSketchLayoutOffsets,
@@ -230,6 +232,10 @@ export function CroquiWorkspace({
         Array.isArray(savedOffsets) && savedOffsets.length === emptyOffsets.length
           ? savedOffsets
           : emptyOffsets,
+      buildingVertexOffsets: normalizeBuildingVertexOffsets(
+        data,
+        initialSettings?.buildingVertexOffsets,
+      ),
       layoutOffsets: normalizeLayoutOffsets(data, initialSettings?.layoutOffsets),
       hiddenElements: Array.isArray(initialSettings?.hiddenElements)
         ? initialSettings.hiddenElements
@@ -250,6 +256,7 @@ export function CroquiWorkspace({
   const [editingLayout, setEditingLayout] = useState(false);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const draggingVertex = useRef<number | null>(null);
+  const draggingBuildingVertex = useRef<string | null>(null);
   const draggingLayout = useRef<LayoutDragState | null>(null);
   const [message, setMessage] = useState("");
   const dataOverrides = useMemo(
@@ -277,6 +284,7 @@ export function CroquiWorkspace({
       buildSketchGeometry(effectiveData, {
         ...settings,
         vertexOffsets: createEmptyVertexOffsets(effectiveData),
+        buildingVertexOffsets: createEmptyBuildingVertexOffsets(effectiveData),
       }),
     [
       effectiveData,
@@ -424,15 +432,59 @@ export function CroquiWorkspace({
 
   function hideSelectedElement() {
     if (!selectedElement) return;
-    setSettings((current) => ({
-      ...current,
-      hiddenElements: Array.from(
-        new Set([...current.hiddenElements, selectedElement]),
-      ),
-    }));
+    const isTextElement = /^(measurement|confrontant|streetText):/.test(
+      selectedElement,
+    );
+    setSettings((current) => {
+      const overrides = createSketchDataOverrides(data, current.dataOverrides);
+      const [kind, rawIndex] = selectedElement.split(":");
+      const index = Number(rawIndex);
+      let edges = overrides.edges;
+      if (kind === "measurement" && Number.isInteger(index)) {
+        edges = edges.map((edge, edgeIndex) =>
+          edgeIndex === index ? { ...edge, measurement: null } : edge,
+        );
+      } else if (kind === "confrontant" && Number.isInteger(index)) {
+        edges = edges.map((edge, edgeIndex) =>
+          edgeIndex === index ? { ...edge, label: "" } : edge,
+        );
+      } else if (kind === "streetText" && Number.isInteger(index)) {
+        const selectedStreet = edges.find((edge) => edge.fromVertex === index);
+        const selectedStreetKey = (
+          selectedStreet?.streetName ||
+          selectedStreet?.label ||
+          ""
+        )
+          .trim()
+          .toUpperCase();
+        edges = edges.map((edge) =>
+          edge.isStreet &&
+          (edge.streetName || edge.label).trim().toUpperCase() ===
+            selectedStreetKey
+            ? { ...edge, streetName: "" }
+            : edge,
+        );
+      } else {
+        return {
+          ...current,
+          hiddenElements: Array.from(
+            new Set([...current.hiddenElements, selectedElement]),
+          ),
+        };
+      }
+      return {
+        ...current,
+        dataOverrides: { ...overrides, edges },
+        hiddenElements: current.hiddenElements.filter(
+          (element) => element !== selectedElement,
+        ),
+      };
+    });
     setSelectedElement(null);
     setMessage(
-      "Elemento removido do desenho. Use restaurar distribuição para recuperá-lo.",
+      isTextElement
+        ? "Texto apagado também no formulário. Digite o valor novamente para fazê-lo reaparecer."
+        : "Elemento removido do desenho. Use restaurar distribuição para recuperá-lo.",
     );
   }
 
@@ -486,8 +538,20 @@ export function CroquiWorkspace({
   ) {
     setSettings((current) => {
       const overrides = createSketchDataOverrides(data, current.dataOverrides);
+      const edge = overrides.edges[index];
+      const restoredElement =
+        key === "measurement"
+          ? `measurement:${index}`
+          : key === "label"
+            ? `confrontant:${index}`
+            : key === "streetName"
+              ? `streetText:${edge?.fromVertex ?? index}`
+              : "";
       return {
         ...current,
+        hiddenElements: restoredElement
+          ? current.hiddenElements.filter((item) => item !== restoredElement)
+          : current.hiddenElements,
         dataOverrides: {
           ...overrides,
           edges: overrides.edges.map((edge, edgeIndex) =>
@@ -645,6 +709,31 @@ export function CroquiWorkspace({
     });
   }
 
+  function moveBuildingVertex(
+    buildingIndex: number,
+    vertexIndex: number,
+    event: ReactPointerEvent<SVGCircleElement>,
+  ) {
+    const dragKey = `building:${buildingIndex}:${vertexIndex}`;
+    if (draggingBuildingVertex.current !== dragKey) return;
+    const local = pointerPosition(event);
+    const basePoint = baseGeometry.buildings[buildingIndex]?.[vertexIndex];
+    if (!local || !basePoint) return;
+    const x = Math.max(35, Math.min(575, local.x));
+    const y = Math.max(200, Math.min(600, local.y));
+    setSettings((current) => {
+      const offsets = normalizeBuildingVertexOffsets(
+        effectiveData,
+        current.buildingVertexOffsets,
+      );
+      offsets[buildingIndex][vertexIndex] = {
+        x: x - basePoint.x,
+        y: y - basePoint.y,
+      };
+      return { ...current, buildingVertexOffsets: offsets };
+    });
+  }
+
   function pointerPosition(event: ReactPointerEvent<SVGElement>) {
     const svg = event.currentTarget.ownerSVGElement;
     const matrix = svg?.getScreenCTM();
@@ -736,6 +825,10 @@ export function CroquiWorkspace({
     updateSetting(
       "vertexOffsets",
       createEmptyVertexOffsets(effectiveData),
+    );
+    updateSetting(
+      "buildingVertexOffsets",
+      createEmptyBuildingVertexOffsets(effectiveData),
     );
     setMessage("Formato calculado restaurado.");
   }
@@ -1040,12 +1133,12 @@ export function CroquiWorkspace({
                 </div>
               ))}
             </div>
-            {dataOverrides.edges.length > 4 && (
+            {dataOverrides.edges.length > 0 && (
               <div className="croqui-boundary-corrections">
                 <strong>Limitantes entre os pontos</strong>
                 <p>
-                  Corrija cada face do terreno irregular e marque todas as faces
-                  acompanhadas pela mesma rua quando ela fizer uma curva.
+                  Corrija cada face do desenho e marque todas as faces acompanhadas
+                  pela mesma rua quando ela fizer uma curva.
                 </p>
                 {dataOverrides.edges.map((edge, index) => (
                   <div
@@ -1187,7 +1280,8 @@ export function CroquiWorkspace({
           {editingVertices && (
             <div className="vertex-editor-note">
               <MoveDiagonal2 size={16} />
-              Arraste os {geometry.points.length} pontos azuis sobre a folha.
+              Arraste os pontos azuis do terreno e os pontos verdes da área
+              construída sobre a folha.
               <button type="button" onClick={restoreCalculatedShape}>
                 Restaurar formato calculado
               </button>
@@ -1297,6 +1391,8 @@ export function CroquiWorkspace({
                   claimantDocument: data.cpf,
                   bci: data.bci,
                   vertexOffsets: createEmptyVertexOffsets(data),
+                  buildingVertexOffsets:
+                    createEmptyBuildingVertexOffsets(data),
                   dataOverrides: createSketchDataOverrides(data),
                 })
               }
@@ -1427,7 +1523,9 @@ export function CroquiWorkspace({
                 const edgeLength = Math.max(Math.hypot(end.x - start.x, end.y - start.y), 1);
                 const tangentX = (end.x - start.x) / edgeLength;
                 const tangentY = (end.y - start.y) / edgeLength;
-                const extension = edge.curved ? 0 : Math.min(70, edgeLength * 0.45);
+                const extension = edge.curved
+                  ? 0
+                  : Math.min(85, Math.max(55, edgeLength * 0.6));
                 const streetKey = (edge.streetName || edge.label || "RUA")
                   .trim()
                   .toUpperCase();
@@ -1436,6 +1534,31 @@ export function CroquiWorkspace({
                   (candidate.streetName || candidate.label || "RUA")
                     .trim()
                     .toUpperCase() === streetKey;
+                const sameStreetEdges = geometry.edges.filter(sameStreet);
+                const preferredNameEdge = sameStreetEdges.reduce(
+                  (preferred, candidate) => {
+                    const preferredStart = geometry.points[preferred.fromVertex];
+                    const preferredEnd = geometry.points[preferred.toVertex];
+                    const candidateStart = geometry.points[candidate.fromVertex];
+                    const candidateEnd = geometry.points[candidate.toVertex];
+                    const horizontalScore = (first: DrawingPoint, second: DrawingPoint) =>
+                      Math.abs(second.x - first.x) /
+                      Math.max(Math.hypot(second.x - first.x, second.y - first.y), 1);
+                    return horizontalScore(candidateStart, candidateEnd) >
+                      horizontalScore(preferredStart, preferredEnd)
+                      ? candidate
+                      : preferred;
+                  },
+                  edge,
+                );
+                const chainStreetName =
+                  sameStreetEdges
+                    .map((candidate) => candidate.streetName.trim())
+                    .find(Boolean)
+                    ?.toUpperCase() || "";
+                const showsStreetName =
+                  preferredNameEdge.fromVertex === edge.fromVertex &&
+                  preferredNameEdge.toVertex === edge.toVertex;
                 const previousStreet = geometry.edges.find(
                   (candidate) =>
                     candidate.toVertex === edge.fromVertex &&
@@ -1470,7 +1593,7 @@ export function CroquiWorkspace({
                   );
                   return `M ${end.x + placement.normalX * offset} ${end.y + placement.normalY * offset} L ${end.x + nextPlacement.normalX * offset} ${end.y + nextPlacement.normalY * offset}`;
                 };
-                const streetName = streetKey;
+                const streetName = showsStreetName ? chainStreetName : "";
                 const name = outwardEdgeLabel(start, end, plotCenter, 20);
                 const streetOffset = layoutOffsets.streetTexts[edge.fromVertex] || { x: 0, y: 0 };
                 const streetX = name.x + streetOffset.x;
@@ -1485,7 +1608,7 @@ export function CroquiWorkspace({
                         <path d={cornerConnectorAt(44)} fill="none" stroke="#111" strokeWidth="1" />
                       </>
                     )}
-                    {!hiddenElements.has(`streetText:${edge.fromVertex}`) && (
+                    {streetName && (
                       <text
                         x={streetX}
                         y={streetY}
@@ -1498,8 +1621,7 @@ export function CroquiWorkspace({
                         {streetName.slice(0, 38)}
                       </text>
                     )}
-                    {editingLayout &&
-                    !hiddenElements.has(`streetText:${edge.fromVertex}`) && (
+                    {editingLayout && streetName && (
                       <circle
                         data-editor-only="true"
                         cx={streetX}
@@ -1637,8 +1759,7 @@ export function CroquiWorkspace({
               const confrontantY = confrontant.y + confrontantOffset.y;
               return (
                 <g key={`edge-details-${index}`}>
-                  {edge.measurement !== null &&
-                  !hiddenElements.has(`measurement:${index}`) && (
+                  {edge.measurement !== null && (
                     <text
                       x={measurementX}
                       y={measurementY}
@@ -1654,8 +1775,7 @@ export function CroquiWorkspace({
                       {formatMeasurement(edge.measurement)} m
                     </text>
                   )}
-                  {!edge.isStreet && edge.label &&
-                  !hiddenElements.has(`confrontant:${index}`) && (
+                  {!edge.isStreet && edge.label && (
                     <text
                       x={confrontantX}
                       y={confrontantY}
@@ -1671,9 +1791,7 @@ export function CroquiWorkspace({
                       {edge.label.toUpperCase().slice(0, 38)}
                     </text>
                   )}
-                  {editingLayout &&
-                  edge.measurement !== null &&
-                  !hiddenElements.has(`measurement:${index}`) && (
+                  {editingLayout && edge.measurement !== null && (
                     <circle
                       data-editor-only="true"
                       cx={measurementX}
@@ -1695,10 +1813,7 @@ export function CroquiWorkspace({
                       onPointerCancel={endLayoutDrag}
                     />
                   )}
-                  {editingLayout &&
-                  !edge.isStreet &&
-                  Boolean(edge.label) &&
-                  !hiddenElements.has(`confrontant:${index}`) && (
+                  {editingLayout && !edge.isStreet && Boolean(edge.label) && (
                     <circle
                       data-editor-only="true"
                       cx={confrontantX}
@@ -1949,6 +2064,37 @@ export function CroquiWorkspace({
                   }}
                 />
               ))}
+            {editingVertices &&
+              geometry.buildings.flatMap((building, buildingIndex) =>
+                building.map((point, vertexIndex) => (
+                  <circle
+                    key={`building-vertex-${buildingIndex}-${vertexIndex}`}
+                    data-editor-only="true"
+                    cx={point.x}
+                    cy={point.y}
+                    r="5.5"
+                    fill="#15966f"
+                    stroke="white"
+                    strokeWidth="1.8"
+                    style={{ cursor: "move", touchAction: "none" }}
+                    onPointerDown={(event) => {
+                      draggingBuildingVertex.current =
+                        `building:${buildingIndex}:${vertexIndex}`;
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                    }}
+                    onPointerMove={(event) =>
+                      moveBuildingVertex(buildingIndex, vertexIndex, event)
+                    }
+                    onPointerUp={(event) => {
+                      draggingBuildingVertex.current = null;
+                      event.currentTarget.releasePointerCapture(event.pointerId);
+                    }}
+                    onPointerCancel={() => {
+                      draggingBuildingVertex.current = null;
+                    }}
+                  />
+                )),
+              )}
 
             {settings.approximationNotice && (
               <text x="298" y="648" textAnchor="middle" fontSize="5.2" fill="#606b72">

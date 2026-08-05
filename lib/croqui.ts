@@ -48,6 +48,7 @@ export type UrbanSketchSettings = {
   showBuilding: boolean;
   approximationNotice: boolean;
   vertexOffsets: SketchPoint[];
+  buildingVertexOffsets: SketchPoint[][];
   layoutOffsets: UrbanSketchLayoutOffsets;
   hiddenElements: string[];
 };
@@ -112,6 +113,7 @@ export const defaultUrbanSketchSettings: UrbanSketchSettings = {
   showBuilding: true,
   approximationNotice: true,
   vertexOffsets: emptyVertexOffsets,
+  buildingVertexOffsets: [],
   layoutOffsets: {
     plot: { x: 0, y: 0 },
     table: { x: 0, y: 0 },
@@ -229,6 +231,27 @@ export function createEmptyVertexOffsets(data: TopographicData) {
   return Array.from({ length: sketchVertexCount(data) }, () => ({ x: 0, y: 0 }));
 }
 
+export function createEmptyBuildingVertexOffsets(data: TopographicData) {
+  return data.plotGeometry.buildings.map((building) =>
+    building.vertices.map(() => zeroPoint()),
+  );
+}
+
+export function normalizeBuildingVertexOffsets(
+  data: TopographicData,
+  saved?: SketchPoint[][],
+) {
+  return data.plotGeometry.buildings.map((building, buildingIndex) =>
+    building.vertices.map((_, vertexIndex) => {
+      const point = saved?.[buildingIndex]?.[vertexIndex];
+      return {
+        x: Number.isFinite(point?.x) ? point!.x : 0,
+        y: Number.isFinite(point?.y) ? point!.y : 0,
+      };
+    }),
+  );
+}
+
 function boundaryMeasurement(data: TopographicData, side: BoundarySide) {
   return data.boundaries.find((boundary) => boundary.side === side)?.measurement;
 }
@@ -301,16 +324,19 @@ export function buildSketchGeometry(
     }));
     const plotOffset = settings.layoutOffsets?.plot || zeroPoint();
     const buildingOffsets = settings.layoutOffsets?.buildings || [];
+    const buildingVertexOffsets = settings.buildingVertexOffsets || [];
     return {
       points,
       edges: data.plotGeometry.edges,
       buildings: data.plotGeometry.buildings.map((building, buildingIndex) =>
-        building.vertices.map((point) => {
+        building.vertices.map((point, vertexIndex) => {
           const mapped = mapPoint(point);
           const offset = buildingOffsets[buildingIndex] || zeroPoint();
+          const vertexOffset =
+            buildingVertexOffsets[buildingIndex]?.[vertexIndex] || zeroPoint();
           return {
-            x: mapped.x + plotOffset.x + offset.x,
-            y: mapped.y + plotOffset.y + offset.y,
+            x: mapped.x + plotOffset.x + offset.x + vertexOffset.x,
+            y: mapped.y + plotOffset.y + offset.y + vertexOffset.y,
           };
         }),
       ),

@@ -26,6 +26,20 @@ function validVertexOffsets(value: unknown) {
   );
 }
 
+function validBuildingVertexOffsets(value: unknown) {
+  return (
+    Array.isArray(value) &&
+    value.length <= 5 &&
+    value.every(
+      (building) =>
+        Array.isArray(building) &&
+        building.length >= 3 &&
+        building.length <= 12 &&
+        building.every(validLayoutPoint),
+    )
+  );
+}
+
 function validLayoutPoint(value: unknown) {
   if (!value || typeof value !== "object") return false;
   const point = value as { x?: unknown; y?: unknown };
@@ -158,6 +172,7 @@ export async function POST(request: Request) {
         (item) => typeof item === "string" && item.length <= 60,
       ) ||
       !validVertexOffsets(settings.vertexOffsets) ||
+      !validBuildingVertexOffsets(settings.buildingVertexOffsets) ||
       !validLayoutOffsets(settings.layoutOffsets)
     ) {
       return NextResponse.json({ error: "Dados do croqui inválidos." }, { status: 400 });
