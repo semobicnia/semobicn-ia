@@ -51,7 +51,8 @@ function validLayoutOffsets(value: unknown) {
     validLayoutPoint(offsets.plot) &&
     validLayoutPoint(offsets.table) &&
     validArray(offsets.buildings, 5) &&
-    validArray(offsets.edgeTexts, 12) &&
+    validArray(offsets.measurementTexts, 12) &&
+    validArray(offsets.confrontantTexts, 12) &&
     validArray(offsets.streetTexts, 12)
   );
 }
@@ -79,6 +80,24 @@ function validDataOverrides(value: unknown) {
       return (
         typeof item.coordinateX === "string" &&
         typeof item.coordinateY === "string"
+      );
+    }) &&
+    Array.isArray(overrides.edges) &&
+    overrides.edges.length <= 12 &&
+    overrides.edges.every((edge) => {
+      if (!edge || typeof edge !== "object") return false;
+      const item = edge as Record<string, unknown>;
+      return (
+        Number.isInteger(item.fromVertex) &&
+        Number.isInteger(item.toVertex) &&
+        typeof item.label === "string" &&
+        validArea(item.measurement) &&
+        typeof item.isStreet === "boolean" &&
+        typeof item.streetName === "string" &&
+        typeof item.curved === "boolean" &&
+        typeof item.curveBulge === "number" &&
+        Number.isFinite(item.curveBulge) &&
+        Math.abs(item.curveBulge) <= 1
       );
     }) &&
     Array.isArray(overrides.boundaries) &&
@@ -133,6 +152,11 @@ export async function POST(request: Request) {
         !validDataOverrides(settings.dataOverrides)) ||
       typeof settings.showBuilding !== "boolean" ||
       typeof settings.approximationNotice !== "boolean" ||
+      !Array.isArray(settings.hiddenElements) ||
+      settings.hiddenElements.length > 40 ||
+      !settings.hiddenElements.every(
+        (item) => typeof item === "string" && item.length <= 60,
+      ) ||
       !validVertexOffsets(settings.vertexOffsets) ||
       !validLayoutOffsets(settings.layoutOffsets)
     ) {

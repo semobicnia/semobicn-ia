@@ -37,6 +37,7 @@ import {
 import type {
   BoundarySide,
   MunicipalSecretary,
+  PlotEdge,
   TopographicData,
 } from "@/lib/topographic";
 
@@ -122,7 +123,8 @@ type LayoutDragTarget =
   | { kind: "plot" }
   | { kind: "table" }
   | { kind: "building"; index: number }
-  | { kind: "edgeText"; index: number }
+  | { kind: "measurementText"; index: number }
+  | { kind: "confrontantText"; index: number }
   | { kind: "streetText"; index: number };
 
 type LayoutDragState = {
@@ -229,6 +231,9 @@ export function CroquiWorkspace({
           ? savedOffsets
           : emptyOffsets,
       layoutOffsets: normalizeLayoutOffsets(data, initialSettings?.layoutOffsets),
+      hiddenElements: Array.isArray(initialSettings?.hiddenElements)
+        ? initialSettings.hiddenElements
+        : [],
       dataOverrides: createSketchDataOverrides(
         data,
         initialSettings?.dataOverrides,
@@ -243,6 +248,7 @@ export function CroquiWorkspace({
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [editingVertices, setEditingVertices] = useState(false);
   const [editingLayout, setEditingLayout] = useState(false);
+  const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const draggingVertex = useRef<number | null>(null);
   const draggingLayout = useRef<LayoutDragState | null>(null);
   const [message, setMessage] = useState("");
@@ -257,6 +263,10 @@ export function CroquiWorkspace({
   const layoutOffsets = useMemo(
     () => normalizeLayoutOffsets(effectiveData, settings.layoutOffsets),
     [effectiveData, settings.layoutOffsets],
+  );
+  const hiddenElements = useMemo(
+    () => new Set(settings.hiddenElements),
+    [settings.hiddenElements],
   );
   const geometry = useMemo(
     () => buildSketchGeometry(effectiveData, settings),
@@ -397,6 +407,35 @@ export function CroquiWorkspace({
     };
   }, [initialLocationImageUrl]);
 
+  useEffect(() => {
+    if (!editingLayout || !selectedElement) return;
+    const removeSelected = (event: KeyboardEvent) => {
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, select, [contenteditable='true']")) {
+        return;
+      }
+      event.preventDefault();
+      hideSelectedElement();
+    };
+    window.addEventListener("keydown", removeSelected);
+    return () => window.removeEventListener("keydown", removeSelected);
+  }, [editingLayout, selectedElement]);
+
+  function hideSelectedElement() {
+    if (!selectedElement) return;
+    setSettings((current) => ({
+      ...current,
+      hiddenElements: Array.from(
+        new Set([...current.hiddenElements, selectedElement]),
+      ),
+    }));
+    setSelectedElement(null);
+    setMessage(
+      "Elemento removido do desenho. Use restaurar distribuição para recuperá-lo.",
+    );
+  }
+
   function updateSetting<K extends keyof UrbanSketchSettings>(
     key: K,
     value: UrbanSketchSettings[K],
@@ -434,6 +473,25 @@ export function CroquiWorkspace({
             boundary.side === side
               ? { ...boundary, [key]: value }
               : boundary,
+          ),
+        },
+      };
+    });
+  }
+
+  function updateEdgeOverride<K extends keyof PlotEdge>(
+    index: number,
+    key: K,
+    value: PlotEdge[K],
+  ) {
+    setSettings((current) => {
+      const overrides = createSketchDataOverrides(data, current.dataOverrides);
+      return {
+        ...current,
+        dataOverrides: {
+          ...overrides,
+          edges: overrides.edges.map((edge, edgeIndex) =>
+            edgeIndex === index ? { ...edge, [key]: value } : edge,
           ),
         },
       };
@@ -605,7 +663,12 @@ export function CroquiWorkspace({
       return offsets[target.kind];
     }
     if (target.kind === "building") return offsets.buildings[target.index];
-    if (target.kind === "edgeText") return offsets.edgeTexts[target.index];
+    if (target.kind === "measurementText") {
+      return offsets.measurementTexts[target.index];
+    }
+    if (target.kind === "confrontantText") {
+      return offsets.confrontantTexts[target.index];
+    }
     return offsets.streetTexts[target.index];
   }
 
@@ -626,6 +689,15 @@ export function CroquiWorkspace({
     event.preventDefault();
   }
 
+  function selectAndBeginLayoutDrag(
+    elementId: string,
+    target: LayoutDragTarget,
+    event: ReactPointerEvent<SVGElement>,
+  ) {
+    setSelectedElement(elementId);
+    beginLayoutDrag(target, event);
+  }
+
   function moveLayoutItem(event: ReactPointerEvent<SVGElement>) {
     const drag = draggingLayout.current;
     if (!drag) return;
@@ -642,8 +714,10 @@ export function CroquiWorkspace({
         offsets[target.kind] = next;
       } else if (target.kind === "building") {
         offsets.buildings[target.index] = next;
-      } else if (target.kind === "edgeText") {
-        offsets.edgeTexts[target.index] = next;
+      } else if (target.kind === "measurementText") {
+        offsets.measurementTexts[target.index] = next;
+      } else if (target.kind === "confrontantText") {
+        offsets.confrontantTexts[target.index] = next;
       } else {
         offsets.streetTexts[target.index] = next;
       }
@@ -668,6 +742,8 @@ export function CroquiWorkspace({
 
   function restoreLayout() {
     updateSetting("layoutOffsets", createDefaultLayoutOffsets(effectiveData));
+    updateSetting("hiddenElements", []);
+    setSelectedElement(null);
     setMessage("Distribuição original restaurada.");
   }
 
@@ -964,6 +1040,86 @@ export function CroquiWorkspace({
                 </div>
               ))}
             </div>
+            {dataOverrides.edges.length > 4 && (
+              <div className="croqui-boundary-corrections">
+                <strong>Limitantes entre os pontos</strong>
+                <p>
+                  Corrija cada face do terreno irregular e marque todas as faces
+                  acompanhadas pela mesma rua quando ela fizer uma curva.
+                </p>
+                {dataOverrides.edges.map((edge, index) => (
+                  <div
+                    className="croqui-boundary-correction"
+                    key={`edge-correction-${edge.fromVertex}-${edge.toVertex}`}
+                  >
+                    <label className="field">
+                      <span>
+                        P{edge.fromVertex + 1}–P{edge.toVertex + 1}: limitante
+                      </span>
+                      <input
+                        value={edge.label}
+                        onChange={(event) =>
+                          updateEdgeOverride(index, "label", event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Medida (m)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={edge.measurement ?? ""}
+                        onChange={(event) =>
+                          updateEdgeOverride(
+                            index,
+                            "measurement",
+                            event.target.value === ""
+                              ? null
+                              : Number(event.target.value),
+                          )
+                        }
+                      />
+                    </label>
+                    <label className="check-row">
+                      <input
+                        type="checkbox"
+                        checked={edge.isStreet}
+                        onChange={(event) =>
+                          updateEdgeOverride(index, "isStreet", event.target.checked)
+                        }
+                      />
+                      Esta face acompanha uma rua
+                    </label>
+                    {edge.isStreet && (
+                      <label className="field">
+                        <span>Nome da rua</span>
+                        <input
+                          value={edge.streetName}
+                          onChange={(event) =>
+                            updateEdgeOverride(
+                              index,
+                              "streetName",
+                              event.target.value,
+                            )
+                          }
+                        />
+                      </label>
+                    )}
+                    <label className="check-row">
+                      <input
+                        type="checkbox"
+                        checked={edge.curved}
+                        onChange={(event) =>
+                          updateEdgeOverride(index, "curved", event.target.checked)
+                        }
+                      />
+                      Segmento curvo
+                    </label>
+                  </div>
+                ))}
+              </div>
+            )}
             {dataOverrides.vertices.length > 0 && (
               <div className="croqui-boundary-corrections">
                 <strong>Coordenadas dos vértices</strong>
@@ -1045,6 +1201,7 @@ export function CroquiWorkspace({
               onChange={(event) => {
                 setEditingLayout(event.target.checked);
                 if (event.target.checked) setEditingVertices(false);
+                if (!event.target.checked) setSelectedElement(null);
               }}
             />
             Ajustar distribuição do desenho
@@ -1053,9 +1210,17 @@ export function CroquiWorkspace({
             <div className="vertex-editor-note">
               <MoveDiagonal2 size={16} />
               Arraste os controles laranja para mover o terreno, a tabela, as
-              edificações e os textos sem alterar medidas ou coordenadas.
+              edificações e cada texto separadamente. Clique em um controle e
+              pressione Delete para ocultar o elemento selecionado.
               <button type="button" onClick={restoreLayout}>
                 Restaurar distribuição
+              </button>
+              <button
+                type="button"
+                onClick={hideSelectedElement}
+                disabled={!selectedElement}
+              >
+                Excluir selecionado
               </button>
             </div>
           )}
@@ -1263,17 +1428,49 @@ export function CroquiWorkspace({
                 const tangentX = (end.x - start.x) / edgeLength;
                 const tangentY = (end.y - start.y) / edgeLength;
                 const extension = edge.curved ? 0 : Math.min(70, edgeLength * 0.45);
+                const streetKey = (edge.streetName || edge.label || "RUA")
+                  .trim()
+                  .toUpperCase();
+                const sameStreet = (candidate: PlotEdge) =>
+                  candidate.isStreet &&
+                  (candidate.streetName || candidate.label || "RUA")
+                    .trim()
+                    .toUpperCase() === streetKey;
+                const previousStreet = geometry.edges.find(
+                  (candidate) =>
+                    candidate.toVertex === edge.fromVertex &&
+                    sameStreet(candidate),
+                );
+                const nextStreet = geometry.edges.find(
+                  (candidate) =>
+                    candidate.fromVertex === edge.toVertex &&
+                    sameStreet(candidate),
+                );
+                const startExtension = previousStreet ? 0 : extension;
+                const endExtension = nextStreet ? 0 : extension;
                 const control = curveControl(start, end, plotCenter, edge.curved, edge.curveBulge);
                 const pathAt = (offset: number) => {
-                  const startX = start.x + placement.normalX * offset - tangentX * extension;
-                  const startY = start.y + placement.normalY * offset - tangentY * extension;
-                  const endX = end.x + placement.normalX * offset + tangentX * extension;
-                  const endY = end.y + placement.normalY * offset + tangentY * extension;
+                  const startX = start.x + placement.normalX * offset - tangentX * startExtension;
+                  const startY = start.y + placement.normalY * offset - tangentY * startExtension;
+                  const endX = end.x + placement.normalX * offset + tangentX * endExtension;
+                  const endY = end.y + placement.normalY * offset + tangentY * endExtension;
                   return edge.curved
                     ? `M ${startX} ${startY} Q ${control.x + placement.normalX * offset} ${control.y + placement.normalY * offset} ${endX} ${endY}`
                     : `M ${startX} ${startY} L ${endX} ${endY}`;
                 };
-                const streetName = (edge.streetName || edge.label || "RUA").toUpperCase();
+                const cornerConnectorAt = (offset: number) => {
+                  if (!nextStreet) return "";
+                  const nextEnd = geometry.points[nextStreet.toVertex];
+                  if (!nextEnd) return "";
+                  const nextPlacement = outwardEdgeLabel(
+                    end,
+                    nextEnd,
+                    plotCenter,
+                    0,
+                  );
+                  return `M ${end.x + placement.normalX * offset} ${end.y + placement.normalY * offset} L ${end.x + nextPlacement.normalX * offset} ${end.y + nextPlacement.normalY * offset}`;
+                };
+                const streetName = streetKey;
                 const name = outwardEdgeLabel(start, end, plotCenter, 20);
                 const streetOffset = layoutOffsets.streetTexts[edge.fromVertex] || { x: 0, y: 0 };
                 const streetX = name.x + streetOffset.x;
@@ -1282,29 +1479,39 @@ export function CroquiWorkspace({
                   <g key={`street-${edge.fromVertex}-${edge.toVertex}-${index}`}>
                     <path d={pathAt(11)} fill="none" stroke="#111" strokeWidth="1" />
                     <path d={pathAt(44)} fill="none" stroke="#111" strokeWidth="1" />
-                    <text
-                      x={streetX}
-                      y={streetY}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fontSize={streetLabelFontSize(streetName)}
-                      fontWeight="400"
-                      transform={`rotate(${name.angle} ${streetX} ${streetY})`}
-                    >
-                      {streetName.slice(0, 38)}
-                    </text>
-                    {editingLayout && (
+                    {nextStreet && (
+                      <>
+                        <path d={cornerConnectorAt(11)} fill="none" stroke="#111" strokeWidth="1" />
+                        <path d={cornerConnectorAt(44)} fill="none" stroke="#111" strokeWidth="1" />
+                      </>
+                    )}
+                    {!hiddenElements.has(`streetText:${edge.fromVertex}`) && (
+                      <text
+                        x={streetX}
+                        y={streetY}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize={streetLabelFontSize(streetName)}
+                        fontWeight="400"
+                        transform={`rotate(${name.angle} ${streetX} ${streetY})`}
+                      >
+                        {streetName.slice(0, 38)}
+                      </text>
+                    )}
+                    {editingLayout &&
+                    !hiddenElements.has(`streetText:${edge.fromVertex}`) && (
                       <circle
                         data-editor-only="true"
                         cx={streetX}
                         cy={streetY}
                         r="5.5"
-                        fill="#f28c18"
+                        fill={selectedElement === `streetText:${edge.fromVertex}` ? "#d94b35" : "#f28c18"}
                         stroke="white"
                         strokeWidth="1.5"
                         style={{ cursor: "move", touchAction: "none" }}
                         onPointerDown={(event) =>
-                          beginLayoutDrag(
+                          selectAndBeginLayoutDrag(
+                            `streetText:${edge.fromVertex}`,
                             { kind: "streetText", index: edge.fromVertex },
                             event,
                           )
@@ -1326,6 +1533,7 @@ export function CroquiWorkspace({
             />
             {settings.showBuilding && geometry.buildings.length > 0
               ? geometry.buildings.map((building, index) => {
+                  if (hiddenElements.has(`building:${index}`)) return null;
                   const center = building.reduce(
                     (result, point) => ({
                       x: result.x + point.x / building.length,
@@ -1347,12 +1555,16 @@ export function CroquiWorkspace({
                           cx={center.x}
                           cy={center.y}
                           r="6"
-                          fill="#f28c18"
+                          fill={selectedElement === `building:${index}` ? "#d94b35" : "#f28c18"}
                           stroke="white"
                           strokeWidth="1.5"
                           style={{ cursor: "move", touchAction: "none" }}
                           onPointerDown={(event) =>
-                            beginLayoutDrag({ kind: "building", index }, event)
+                            selectAndBeginLayoutDrag(
+                              `building:${index}`,
+                              { kind: "building", index },
+                              event,
+                            )
                           }
                           onPointerMove={moveLayoutItem}
                           onPointerUp={endLayoutDrag}
@@ -1366,7 +1578,8 @@ export function CroquiWorkspace({
             {settings.showBuilding &&
             geometry.buildings.length === 0 &&
             effectiveData.builtArea &&
-            effectiveData.builtArea > 0 ? (
+            effectiveData.builtArea > 0 &&
+            !hiddenElements.has("building:0") ? (
               <rect
                 x={buildingCenter.x - 70}
                 y={buildingCenter.y - 27}
@@ -1381,18 +1594,23 @@ export function CroquiWorkspace({
             settings.showBuilding &&
             geometry.buildings.length === 0 &&
             effectiveData.builtArea &&
-            effectiveData.builtArea > 0 ? (
+            effectiveData.builtArea > 0 &&
+            !hiddenElements.has("building:0") ? (
               <circle
                 data-editor-only="true"
                 cx={buildingCenter.x}
                 cy={buildingCenter.y}
                 r="6"
-                fill="#f28c18"
+                fill={selectedElement === "building:0" ? "#d94b35" : "#f28c18"}
                 stroke="white"
                 strokeWidth="1.5"
                 style={{ cursor: "move", touchAction: "none" }}
                 onPointerDown={(event) =>
-                  beginLayoutDrag({ kind: "building", index: 0 }, event)
+                  selectAndBeginLayoutDrag(
+                    "building:0",
+                    { kind: "building", index: 0 },
+                    event,
+                  )
                 }
                 onPointerMove={moveLayoutItem}
                 onPointerUp={endLayoutDrag}
@@ -1411,14 +1629,16 @@ export function CroquiWorkspace({
                 edge.isStreet ? -13 : 13,
               );
               const confrontant = outwardEdgeLabel(start, end, plotCenter, 34);
-              const textOffset = layoutOffsets.edgeTexts[index] || { x: 0, y: 0 };
-              const measurementX = measurement.x + textOffset.x;
-              const measurementY = measurement.y + textOffset.y;
-              const confrontantX = confrontant.x + textOffset.x;
-              const confrontantY = confrontant.y + textOffset.y;
+              const measurementOffset = layoutOffsets.measurementTexts[index] || { x: 0, y: 0 };
+              const confrontantOffset = layoutOffsets.confrontantTexts[index] || { x: 0, y: 0 };
+              const measurementX = measurement.x + measurementOffset.x;
+              const measurementY = measurement.y + measurementOffset.y;
+              const confrontantX = confrontant.x + confrontantOffset.x;
+              const confrontantY = confrontant.y + confrontantOffset.y;
               return (
                 <g key={`edge-details-${index}`}>
-                  {edge.measurement !== null && (
+                  {edge.measurement !== null &&
+                  !hiddenElements.has(`measurement:${index}`) && (
                     <text
                       x={measurementX}
                       y={measurementY}
@@ -1434,7 +1654,8 @@ export function CroquiWorkspace({
                       {formatMeasurement(edge.measurement)} m
                     </text>
                   )}
-                  {!edge.isStreet && edge.label && (
+                  {!edge.isStreet && edge.label &&
+                  !hiddenElements.has(`confrontant:${index}`) && (
                     <text
                       x={confrontantX}
                       y={confrontantY}
@@ -1450,18 +1671,49 @@ export function CroquiWorkspace({
                       {edge.label.toUpperCase().slice(0, 38)}
                     </text>
                   )}
-                  {editingLayout && (
+                  {editingLayout &&
+                  edge.measurement !== null &&
+                  !hiddenElements.has(`measurement:${index}`) && (
                     <circle
                       data-editor-only="true"
-                      cx={(measurementX + confrontantX) / 2}
-                      cy={(measurementY + confrontantY) / 2}
+                      cx={measurementX}
+                      cy={measurementY}
                       r="5.5"
-                      fill="#f28c18"
+                      fill={selectedElement === `measurement:${index}` ? "#d94b35" : "#f28c18"}
                       stroke="white"
                       strokeWidth="1.5"
                       style={{ cursor: "move", touchAction: "none" }}
                       onPointerDown={(event) =>
-                        beginLayoutDrag({ kind: "edgeText", index }, event)
+                        selectAndBeginLayoutDrag(
+                          `measurement:${index}`,
+                          { kind: "measurementText", index },
+                          event,
+                        )
+                      }
+                      onPointerMove={moveLayoutItem}
+                      onPointerUp={endLayoutDrag}
+                      onPointerCancel={endLayoutDrag}
+                    />
+                  )}
+                  {editingLayout &&
+                  !edge.isStreet &&
+                  Boolean(edge.label) &&
+                  !hiddenElements.has(`confrontant:${index}`) && (
+                    <circle
+                      data-editor-only="true"
+                      cx={confrontantX}
+                      cy={confrontantY}
+                      r="5.5"
+                      fill={selectedElement === `confrontant:${index}` ? "#d94b35" : "#f28c18"}
+                      stroke="white"
+                      strokeWidth="1.5"
+                      style={{ cursor: "move", touchAction: "none" }}
+                      onPointerDown={(event) =>
+                        selectAndBeginLayoutDrag(
+                          `confrontant:${index}`,
+                          { kind: "confrontantText", index },
+                          event,
+                        )
                       }
                       onPointerMove={moveLayoutItem}
                       onPointerUp={endLayoutDrag}
@@ -1507,6 +1759,7 @@ export function CroquiWorkspace({
               );
             })}
 
+            {!hiddenElements.has("table") && (
             <g aria-label="Tabela de pontos e perímetro">
               <rect
                 x={perimeterTable.x}
@@ -1618,12 +1871,16 @@ export function CroquiWorkspace({
                     cx={perimeterTable.x + 4}
                     cy={perimeterTable.y + 4}
                     r="5.5"
-                    fill="#f28c18"
+                    fill={selectedElement === "table" ? "#d94b35" : "#f28c18"}
                     stroke="white"
                     strokeWidth="1.5"
                     style={{ cursor: "move", touchAction: "none" }}
                     onPointerDown={(event) =>
-                      beginLayoutDrag({ kind: "table" }, event)
+                      selectAndBeginLayoutDrag(
+                        "table",
+                        { kind: "table" },
+                        event,
+                      )
                     }
                     onPointerMove={moveLayoutItem}
                     onPointerUp={endLayoutDrag}
@@ -1632,6 +1889,7 @@ export function CroquiWorkspace({
                 </g>
               )}
             </g>
+            )}
 
             {editingLayout && (
               <g data-editor-only="true">

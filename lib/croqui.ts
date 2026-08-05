@@ -19,6 +19,7 @@ export type UrbanSketchDataOverrides = {
   landArea: number | null;
   builtArea: number | null;
   boundaries: UrbanSketchBoundaryOverride[];
+  edges: PlotEdge[];
   vertices: Array<{
     coordinateX: string;
     coordinateY: string;
@@ -29,8 +30,11 @@ export type UrbanSketchLayoutOffsets = {
   plot: SketchPoint;
   table: SketchPoint;
   buildings: SketchPoint[];
-  edgeTexts: SketchPoint[];
+  measurementTexts: SketchPoint[];
+  confrontantTexts: SketchPoint[];
   streetTexts: SketchPoint[];
+  /** Posição antiga, mantida somente para carregar croquis já salvos. */
+  edgeTexts?: SketchPoint[];
 };
 
 export type UrbanSketchSettings = {
@@ -45,6 +49,7 @@ export type UrbanSketchSettings = {
   approximationNotice: boolean;
   vertexOffsets: SketchPoint[];
   layoutOffsets: UrbanSketchLayoutOffsets;
+  hiddenElements: string[];
 };
 
 const emptyVertexOffsets: UrbanSketchSettings["vertexOffsets"] = [
@@ -64,7 +69,8 @@ export function createDefaultLayoutOffsets(data: TopographicData) {
     plot: zeroPoint(),
     table: zeroPoint(),
     buildings: Array.from({ length: buildingCount }, zeroPoint),
-    edgeTexts: Array.from({ length: edgeCount }, zeroPoint),
+    measurementTexts: Array.from({ length: edgeCount }, zeroPoint),
+    confrontantTexts: Array.from({ length: edgeCount }, zeroPoint),
     streetTexts: Array.from({ length: edgeCount }, zeroPoint),
   } satisfies UrbanSketchLayoutOffsets;
 }
@@ -84,8 +90,11 @@ export function normalizeLayoutOffsets(
     buildings: defaults.buildings.map((_, index) =>
       point(saved?.buildings?.[index]),
     ),
-    edgeTexts: defaults.edgeTexts.map((_, index) =>
-      point(saved?.edgeTexts?.[index]),
+    measurementTexts: defaults.measurementTexts.map((_, index) =>
+      point(saved?.measurementTexts?.[index] ?? saved?.edgeTexts?.[index]),
+    ),
+    confrontantTexts: defaults.confrontantTexts.map((_, index) =>
+      point(saved?.confrontantTexts?.[index] ?? saved?.edgeTexts?.[index]),
     ),
     streetTexts: defaults.streetTexts.map((_, index) =>
       point(saved?.streetTexts?.[index]),
@@ -107,9 +116,11 @@ export const defaultUrbanSketchSettings: UrbanSketchSettings = {
     plot: { x: 0, y: 0 },
     table: { x: 0, y: 0 },
     buildings: [{ x: 0, y: 0 }],
-    edgeTexts: Array.from({ length: 4 }, zeroPoint),
+    measurementTexts: Array.from({ length: 4 }, zeroPoint),
+    confrontantTexts: Array.from({ length: 4 }, zeroPoint),
     streetTexts: Array.from({ length: 4 }, zeroPoint),
   },
+  hiddenElements: [],
 };
 
 export function createSketchDataOverrides(
@@ -129,6 +140,12 @@ export function createSketchDataOverrides(
         saved?.vertices?.[index]?.coordinateX ?? vertex.coordinateX,
       coordinateY:
         saved?.vertices?.[index]?.coordinateY ?? vertex.coordinateY,
+    })),
+    edges: data.plotGeometry.edges.map((edge, index) => ({
+      ...edge,
+      ...(saved?.edges?.[index] ?? {}),
+      fromVertex: edge.fromVertex,
+      toVertex: edge.toVertex,
     })),
     boundaries: data.boundaries.map((boundary) => {
       const stored = saved?.boundaries.find(
@@ -165,6 +182,12 @@ export function applySketchDataOverrides(
           overrides.vertices[index]?.coordinateX ?? vertex.coordinateX,
         coordinateY:
           overrides.vertices[index]?.coordinateY ?? vertex.coordinateY,
+      })),
+      edges: data.plotGeometry.edges.map((edge, index) => ({
+        ...edge,
+        ...(overrides.edges[index] ?? {}),
+        fromVertex: edge.fromVertex,
+        toVertex: edge.toVertex,
       })),
     },
     boundaries: data.boundaries.map((boundary) => {
