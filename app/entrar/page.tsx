@@ -8,7 +8,7 @@ export default async function SignInPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const session = await getAuthenticatedSession();
-  if (session) redirect("/");
+  if (session) redirect("/sistema");
 
   const { error } = await searchParams;
   return <LoginCard error={error} />;

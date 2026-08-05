@@ -17,6 +17,25 @@ create table if not exists app_users (
 create unique index if not exists app_users_email_idx
   on app_users (lower(email));
 
+create table if not exists access_requests (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null,
+  email text not null,
+  phone text not null,
+  job_title text not null,
+  registration text not null,
+  status text not null default 'pending',
+  reviewed_by_user_id uuid references app_users (id),
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint access_requests_status_check
+    check (status in ('pending', 'approved', 'rejected'))
+);
+
+create unique index if not exists access_requests_email_idx
+  on access_requests (lower(email));
+
 insert into app_users (email, full_name, role)
 values (
   'semobicn.ia@gmail.com',

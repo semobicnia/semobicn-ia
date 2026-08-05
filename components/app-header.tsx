@@ -29,7 +29,7 @@ const roleLabels: Record<UserRole, string> = {
 export function AppHeader({ currentUser }: { currentUser: HeaderUser }) {
   const pathname = usePathname();
   const links = [
-    { href: "/", label: "Novo croqui", icon: FilePlus2, visible: true },
+    { href: "/sistema", label: "Novo croqui", icon: FilePlus2, visible: true },
     { href: "/croquis", label: "Croquis", icon: DraftingCompass, visible: true },
     { href: "/historico", label: "Histórico", icon: FileClock, visible: true },
     {
@@ -54,7 +54,7 @@ export function AppHeader({ currentUser }: { currentUser: HeaderUser }) {
 
   return (
     <header className="topbar">
-      <Link className="brand" href="/">
+      <Link className="brand" href="/sistema">
         <div className="brand-mark">S</div>
         <div>
           <strong>SEMOBICN IA</strong>
@@ -66,8 +66,8 @@ export function AppHeader({ currentUser }: { currentUser: HeaderUser }) {
           .filter((item) => item.visible)
           .map((item) => {
             const active =
-              item.href === "/"
-                ? pathname === "/"
+              item.href === "/sistema"
+                ? pathname === "/sistema"
                 : pathname.startsWith(item.href);
             const Icon = item.icon;
             return (

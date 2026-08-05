@@ -56,7 +56,7 @@ export default async function UrbanSketchesPage() {
               <MapPinned size={36} />
               <strong>Nenhum croqui iniciado</strong>
               <span>Envie uma foto ou PDF do desenho original para começar.</span>
-              <Link className="button primary compact" href="/">
+              <Link className="button primary compact" href="/sistema">
                 Criar primeiro croqui
               </Link>
             </div>

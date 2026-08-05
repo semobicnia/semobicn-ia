@@ -23,7 +23,7 @@ function formatDate(value: string) {
 export default async function DashboardPage() {
   const session = await getAuthenticatedSession();
   if (!session) redirect("/entrar");
-  if (session.user.role !== "admin") redirect("/");
+  if (session.user.role !== "admin") redirect("/sistema");
   const stats = await getDashboardStats();
 
   const cards = [

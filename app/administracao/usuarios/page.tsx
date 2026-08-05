@@ -3,14 +3,17 @@ import { redirect } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { UsersManager } from "@/components/users-manager";
 import { getAuthenticatedSession } from "@/lib/auth";
-import { listManagedUsers } from "@/lib/users";
+import { listManagedUsers, listPendingAccessRequests } from "@/lib/users";
 
 export default async function UsersPage() {
   const session = await getAuthenticatedSession();
   if (!session) redirect("/entrar");
-  if (session.user.role !== "admin") redirect("/");
+  if (session.user.role !== "admin") redirect("/sistema");
 
-  const users = await listManagedUsers();
+  const [users, accessRequests] = await Promise.all([
+    listManagedUsers(),
+    listPendingAccessRequests(),
+  ]);
   const currentUser = {
     name: session.user.name || "Servidor autorizado",
     email: session.user.email || "",
@@ -35,6 +38,7 @@ export default async function UsersPage() {
         <UsersManager
           currentUserId={session.user.id}
           initialUsers={users}
+          initialAccessRequests={accessRequests}
         />
       </div>
     </main>

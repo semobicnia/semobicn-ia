@@ -58,6 +58,8 @@ O esquema cria:
   registro e situação ativa;
 - `municipal_secretaries`: secretário municipal padrão aplicado
   automaticamente aos croquis, sem seleção manual;
+- `access_requests`: solicitações públicas de acesso vinculadas ao Gmail do
+  servidor e mantidas como pendentes até autorização;
 - `topographic_processes`: processos analisados, incluindo o sexo do posseiro
   e os servidores escolhidos para assinar o documento.
 

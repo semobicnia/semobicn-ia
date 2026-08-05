@@ -1,8 +1,21 @@
 "use client";
 
-import { Check, Pencil, Plus, ShieldCheck, UserX, X } from "lucide-react";
+import {
+  BadgeCheck,
+  BriefcaseBusiness,
+  Check,
+  Mail,
+  Pencil,
+  Phone,
+  Plus,
+  ShieldCheck,
+  UserCheck,
+  UserRoundX,
+  UserX,
+  X,
+} from "lucide-react";
 import { useState } from "react";
-import type { ManagedUser, UserRole } from "@/lib/users";
+import type { AccessRequest, ManagedUser, UserRole } from "@/lib/users";
 import type { SexCode, StaffRole } from "@/lib/topographic";
 
 const roleLabels: Record<UserRole, string> = {
@@ -42,12 +55,15 @@ const emptyDraft: Draft = {
 
 export function UsersManager({
   initialUsers,
+  initialAccessRequests,
   currentUserId,
 }: {
   initialUsers: ManagedUser[];
+  initialAccessRequests: AccessRequest[];
   currentUserId: string;
 }) {
   const [users, setUsers] = useState(initialUsers);
+  const [accessRequests, setAccessRequests] = useState(initialAccessRequests);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
@@ -146,8 +162,110 @@ export function UsersManager({
     setMessage("");
   }
 
+  async function reviewRequest(
+    request: AccessRequest,
+    action: "approve" | "reject",
+  ) {
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await fetch(`/api/access-requests/${request.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(result.error || "Não foi possível revisar a solicitação.");
+      }
+      setAccessRequests((current) =>
+        current.filter((item) => item.id !== request.id),
+      );
+      setMessage(
+        action === "approve"
+          ? `${request.fullName} foi autorizado como operador.`
+          : `Solicitação de ${request.fullName} recusada.`,
+      );
+      if (action === "approve") {
+        window.setTimeout(() => window.location.reload(), 700);
+      }
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Não foi possível revisar a solicitação.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <div className="admin-grid">
+    <>
+      {accessRequests.length > 0 && (
+        <section className="mb-6 rounded-2xl border border-emerald-200 bg-white/90 p-5 shadow-sm backdrop-blur sm:p-6">
+          <div className="mb-5 flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-900">
+              <BadgeCheck size={19} />
+            </span>
+            <div>
+              <h2 className="text-base font-semibold text-zinc-950">
+                Solicitações de acesso
+              </h2>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                Confira os dados antes de autorizar o login pela conta Gmail.
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-3">
+            {accessRequests.map((request) => (
+              <article
+                className="grid gap-4 rounded-xl border border-zinc-200 bg-zinc-50/70 p-4 lg:grid-cols-[1fr_auto] lg:items-center"
+                key={request.id}
+              >
+                <div>
+                  <strong className="text-sm text-zinc-950">{request.fullName}</strong>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-zinc-600">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Mail size={13} /> {request.email}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Phone size={13} /> {request.phone}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <BriefcaseBusiness size={13} /> {request.jobTitle}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <BadgeCheck size={13} /> Matrícula {request.registration}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-zinc-950 px-3 text-xs font-semibold text-white hover:bg-zinc-800 disabled:opacity-60"
+                    disabled={loading}
+                    onClick={() => reviewRequest(request, "approve")}
+                    type="button"
+                  >
+                    <UserCheck size={14} /> Autorizar
+                  </button>
+                  <button
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 disabled:opacity-60"
+                    disabled={loading}
+                    onClick={() => reviewRequest(request, "reject")}
+                    type="button"
+                  >
+                    <UserRoundX size={14} /> Recusar
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="admin-grid">
       <section className="admin-card">
         <div className="admin-card-heading">
           <span><Plus size={19} /></span>
@@ -436,6 +554,7 @@ export function UsersManager({
           })}
         </div>
       </section>
-    </div>
+      </div>
+    </>
   );
 }

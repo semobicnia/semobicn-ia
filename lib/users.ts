@@ -21,6 +21,20 @@ export type ManagedUser = AppUser & {
   createdAt: string;
 };
 
+export type AccessRequestInput = {
+  fullName: string;
+  email: string;
+  phone: string;
+  jobTitle: string;
+  registration: string;
+};
+
+export type AccessRequest = AccessRequestInput & {
+  id: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+};
+
 type UserRow = {
   id: string;
   email: string;
@@ -37,6 +51,186 @@ type UserRow = {
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
+}
+
+async function ensureAccessRequestsTable(sql: Sql) {
+  await sql`
+    create table if not exists access_requests (
+      id uuid primary key default gen_random_uuid(),
+      full_name text not null,
+      email text not null,
+      phone text not null,
+      job_title text not null,
+      registration text not null,
+      status text not null default 'pending',
+      reviewed_by_user_id uuid references app_users (id),
+      reviewed_at timestamptz,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      constraint access_requests_status_check
+        check (status in ('pending', 'approved', 'rejected'))
+    )
+  `;
+  await sql`
+    create unique index if not exists access_requests_email_idx
+      on access_requests (lower(email))
+  `;
+}
+
+export async function createAccessRequest(input: AccessRequestInput) {
+  const fullName = input.fullName.trim().replace(/\s+/g, " ");
+  const email = normalizeEmail(input.email);
+  const phone = input.phone.trim();
+  const phoneDigits = phone.replace(/\D/g, "");
+  const jobTitle = input.jobTitle.trim().replace(/\s+/g, " ");
+  const registration = input.registration.trim();
+
+  if (
+    fullName.length < 5 ||
+    fullName.length > 120 ||
+    !/^[^@\s]+@gmail\.com$/i.test(email) ||
+    phoneDigits.length < 10 ||
+    phoneDigits.length > 11 ||
+    phone.length > 20 ||
+    jobTitle.length < 2 ||
+    jobTitle.length > 100 ||
+    registration.length < 1 ||
+    registration.length > 50
+  ) {
+    throw new Error("INVALID_ACCESS_REQUEST");
+  }
+
+  const sql = createDatabaseClient();
+  if (!sql) throw new Error("DATABASE_UNAVAILABLE");
+
+  try {
+    await ensureAccessRequestsTable(sql);
+    const [authorized] = await sql<{ id: string }[]>`
+      select id
+      from app_users
+      where lower(email) = ${email} and active
+      limit 1
+    `;
+    if (authorized) throw new Error("ALREADY_AUTHORIZED");
+
+    const [request] = await sql<{ id: string }[]>`
+      insert into access_requests (
+        full_name,
+        email,
+        phone,
+        job_title,
+        registration,
+        status
+      ) values (
+        ${fullName},
+        ${email},
+        ${phone},
+        ${jobTitle},
+        ${registration},
+        'pending'
+      )
+      on conflict (lower(email)) do update
+      set
+        full_name = excluded.full_name,
+        phone = excluded.phone,
+        job_title = excluded.job_title,
+        registration = excluded.registration,
+        status = 'pending',
+        reviewed_by_user_id = null,
+        reviewed_at = null,
+        updated_at = now()
+      returning id
+    `;
+    if (!request) throw new Error("ACCESS_REQUEST_FAILED");
+    return request.id;
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function listPendingAccessRequests(): Promise<AccessRequest[]> {
+  const sql = createDatabaseClient();
+  if (!sql) return [];
+  try {
+    await ensureAccessRequestsTable(sql);
+    const rows = await sql<
+      Array<{
+        id: string;
+        full_name: string;
+        email: string;
+        phone: string;
+        job_title: string;
+        registration: string;
+        status: AccessRequest["status"];
+        created_at: Date | string;
+      }>
+    >`
+      select id, full_name, email, phone, job_title, registration, status, created_at
+      from access_requests
+      where status = 'pending'
+      order by created_at asc
+    `;
+    return rows.map((row) => ({
+      id: row.id,
+      fullName: row.full_name,
+      email: row.email,
+      phone: row.phone,
+      jobTitle: row.job_title,
+      registration: row.registration,
+      status: row.status,
+      createdAt:
+        row.created_at instanceof Date
+          ? row.created_at.toISOString()
+          : new Date(row.created_at).toISOString(),
+    }));
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function reviewAccessRequest(input: {
+  id: string;
+  reviewerId: string;
+  action: "approve" | "reject";
+}) {
+  const sql = createDatabaseClient();
+  if (!sql) throw new Error("DATABASE_UNAVAILABLE");
+  try {
+    await ensureAccessRequestsTable(sql);
+    const [request] = await sql<
+      Array<{ id: string; full_name: string; email: string }>
+    >`
+      select id, full_name, email
+      from access_requests
+      where id = ${input.id}::uuid and status = 'pending'
+      limit 1
+    `;
+    if (!request) throw new Error("ACCESS_REQUEST_NOT_FOUND");
+
+    if (input.action === "approve") {
+      await sql`
+        insert into app_users (email, full_name, role, active)
+        values (${request.email}, ${request.full_name}, 'operator', true)
+        on conflict (lower(email)) do update
+        set
+          full_name = excluded.full_name,
+          active = true,
+          updated_at = now()
+      `;
+    }
+
+    await sql`
+      update access_requests
+      set
+        status = ${input.action === "approve" ? "approved" : "rejected"},
+        reviewed_by_user_id = ${input.reviewerId}::uuid,
+        reviewed_at = now(),
+        updated_at = now()
+      where id = ${input.id}::uuid
+    `;
+  } finally {
+    await sql.end();
+  }
 }
 
 function toIso(value: Date | string | null | undefined) {
