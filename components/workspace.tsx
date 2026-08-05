@@ -21,6 +21,7 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AppHeader } from "@/components/app-header";
+import { AppFooter } from "@/components/app-footer";
 import type {
   ProcessEvent,
   ProcessStatus,
@@ -520,7 +521,7 @@ export function Workspace({
 
   function restart() {
     if (initialProcess) {
-      window.location.href = "/";
+      window.location.href = "/sistema";
       return;
     }
     setStep("upload");
@@ -533,10 +534,10 @@ export function Workspace({
   }
 
   return (
-    <main className="min-h-screen">
+    <main className="flex min-h-dvh flex-col">
       <AppHeader currentUser={currentUser} />
 
-      <div className="page-shell">
+      <div className="page-shell flex-1">
         <section className="intro">
           <div>
             <p className="eyebrow">
@@ -1263,6 +1264,7 @@ export function Workspace({
           </aside>
         </div>
       </div>
+      <AppFooter />
     </main>
   );
 }

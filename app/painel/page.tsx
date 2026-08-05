@@ -9,6 +9,7 @@ import {
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
+import { AppFooter } from "@/components/app-footer";
 import { getAuthenticatedSession } from "@/lib/auth";
 import { getDashboardStats } from "@/lib/database";
 
@@ -34,7 +35,7 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <main className="min-h-screen">
+    <main className="flex min-h-dvh flex-col">
       <AppHeader
         currentUser={{
           name: session.user.name || "Servidor autorizado",
@@ -42,7 +43,7 @@ export default async function DashboardPage() {
           role: session.user.role,
         }}
       />
-      <div className="page-shell management-shell">
+      <div className="page-shell management-shell flex-1">
         <section className="management-heading">
           <span><FileBarChart size={24} /></span>
           <div>
@@ -126,6 +127,7 @@ export default async function DashboardPage() {
           </section>
         </div>
       </div>
+      <AppFooter />
     </main>
   );
 }

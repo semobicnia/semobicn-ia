@@ -20,6 +20,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { AppHeader, type HeaderUser } from "./app-header";
+import { AppFooter } from "./app-footer";
 import {
   applySketchDataOverrides,
   buildSketchGeometry,
@@ -1044,9 +1045,9 @@ export function CroquiWorkspace({
   }
 
   return (
-    <main className="croqui-page">
+    <main className="croqui-page flex min-h-dvh flex-col">
       <AppHeader currentUser={currentUser} />
-      <div className="croqui-shell">
+      <div className="croqui-shell flex-1">
         <aside className="croqui-controls">
           <div>
             <p className="eyebrow">Agente de Croqui Urbano</p>
@@ -2567,6 +2568,7 @@ export function CroquiWorkspace({
           </svg>
         </section>
       </div>
+      <AppFooter />
     </main>
   );
 }

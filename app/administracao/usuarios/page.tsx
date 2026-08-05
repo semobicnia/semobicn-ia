@@ -1,6 +1,7 @@
 import { UsersRound } from "lucide-react";
 import { redirect } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
+import { AppFooter } from "@/components/app-footer";
 import { UsersManager } from "@/components/users-manager";
 import { getAuthenticatedSession } from "@/lib/auth";
 import { listManagedUsers, listPendingAccessRequests } from "@/lib/users";
@@ -21,9 +22,9 @@ export default async function UsersPage() {
   };
 
   return (
-    <main className="min-h-screen">
+    <main className="flex min-h-dvh flex-col">
       <AppHeader currentUser={currentUser} />
-      <div className="page-shell management-shell">
+      <div className="page-shell management-shell flex-1">
         <section className="management-heading">
           <span><UsersRound size={24} /></span>
           <div>
@@ -41,6 +42,7 @@ export default async function UsersPage() {
           initialAccessRequests={accessRequests}
         />
       </div>
+      <AppFooter />
     </main>
   );
 }

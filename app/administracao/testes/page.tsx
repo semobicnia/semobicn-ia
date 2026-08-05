@@ -1,6 +1,7 @@
 import { FlaskConical } from "lucide-react";
 import { redirect } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
+import { AppFooter } from "@/components/app-footer";
 import { ExtractionTestLab } from "@/components/extraction-test-lab";
 import { getAuthenticatedSession } from "@/lib/auth";
 
@@ -10,7 +11,7 @@ export default async function TestsPage() {
   if (session.user.role !== "admin") redirect("/sistema");
 
   return (
-    <main className="min-h-screen">
+    <main className="flex min-h-dvh flex-col">
       <AppHeader
         currentUser={{
           name: session.user.name || "Servidor autorizado",
@@ -18,7 +19,7 @@ export default async function TestsPage() {
           role: session.user.role,
         }}
       />
-      <div className="page-shell management-shell">
+      <div className="page-shell management-shell flex-1">
         <section className="management-heading">
           <span><FlaskConical size={24} /></span>
           <div>
@@ -32,6 +33,7 @@ export default async function TestsPage() {
         </section>
         <ExtractionTestLab />
       </div>
+      <AppFooter />
     </main>
   );
 }
