@@ -37,6 +37,12 @@ export type UrbanSketchLayoutOffsets = {
   edgeTexts?: SketchPoint[];
 };
 
+export type UrbanSketchTextRotations = {
+  measurementTexts: number[];
+  confrontantTexts: number[];
+  streetTexts: number[];
+};
+
 export type UrbanSketchSettings = {
   northAngle: number;
   scale: string;
@@ -50,6 +56,7 @@ export type UrbanSketchSettings = {
   vertexOffsets: SketchPoint[];
   buildingVertexOffsets: SketchPoint[][];
   layoutOffsets: UrbanSketchLayoutOffsets;
+  textRotations: UrbanSketchTextRotations;
   hiddenElements: string[];
 };
 
@@ -103,6 +110,36 @@ export function normalizeLayoutOffsets(
   } satisfies UrbanSketchLayoutOffsets;
 }
 
+export function createDefaultTextRotations(data: TopographicData) {
+  const edgeCount =
+    data.plotGeometry.edges.length >= 3 ? data.plotGeometry.edges.length : 4;
+  return {
+    measurementTexts: Array.from({ length: edgeCount }, () => 0),
+    confrontantTexts: Array.from({ length: edgeCount }, () => 0),
+    streetTexts: Array.from({ length: edgeCount }, () => 0),
+  } satisfies UrbanSketchTextRotations;
+}
+
+export function normalizeTextRotations(
+  data: TopographicData,
+  saved?: Partial<UrbanSketchTextRotations>,
+) {
+  const defaults = createDefaultTextRotations(data);
+  const angle = (value: number | undefined) =>
+    Number.isFinite(value) ? Math.max(-180, Math.min(180, value!)) : 0;
+  return {
+    measurementTexts: defaults.measurementTexts.map((_, index) =>
+      angle(saved?.measurementTexts?.[index]),
+    ),
+    confrontantTexts: defaults.confrontantTexts.map((_, index) =>
+      angle(saved?.confrontantTexts?.[index]),
+    ),
+    streetTexts: defaults.streetTexts.map((_, index) =>
+      angle(saved?.streetTexts?.[index]),
+    ),
+  } satisfies UrbanSketchTextRotations;
+}
+
 export const defaultUrbanSketchSettings: UrbanSketchSettings = {
   northAngle: 0,
   scale: "1:200",
@@ -121,6 +158,11 @@ export const defaultUrbanSketchSettings: UrbanSketchSettings = {
     measurementTexts: Array.from({ length: 4 }, zeroPoint),
     confrontantTexts: Array.from({ length: 4 }, zeroPoint),
     streetTexts: Array.from({ length: 4 }, zeroPoint),
+  },
+  textRotations: {
+    measurementTexts: Array.from({ length: 4 }, () => 0),
+    confrontantTexts: Array.from({ length: 4 }, () => 0),
+    streetTexts: Array.from({ length: 4 }, () => 0),
   },
   hiddenElements: [],
 };

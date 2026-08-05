@@ -71,6 +71,26 @@ function validLayoutOffsets(value: unknown) {
   );
 }
 
+function validTextRotations(value: unknown) {
+  if (!value || typeof value !== "object") return false;
+  const rotations = value as Record<string, unknown>;
+  const validArray = (item: unknown) =>
+    Array.isArray(item) &&
+    item.length >= 1 &&
+    item.length <= 12 &&
+    item.every(
+      (angle) =>
+        typeof angle === "number" &&
+        Number.isFinite(angle) &&
+        Math.abs(angle) <= 180,
+    );
+  return (
+    validArray(rotations.measurementTexts) &&
+    validArray(rotations.confrontantTexts) &&
+    validArray(rotations.streetTexts)
+  );
+}
+
 function validDataOverrides(value: unknown) {
   if (!value || typeof value !== "object") return false;
   const overrides = value as Record<string, unknown>;
@@ -173,7 +193,8 @@ export async function POST(request: Request) {
       ) ||
       !validVertexOffsets(settings.vertexOffsets) ||
       !validBuildingVertexOffsets(settings.buildingVertexOffsets) ||
-      !validLayoutOffsets(settings.layoutOffsets)
+      !validLayoutOffsets(settings.layoutOffsets) ||
+      !validTextRotations(settings.textRotations)
     ) {
       return NextResponse.json({ error: "Dados do croqui inválidos." }, { status: 400 });
     }

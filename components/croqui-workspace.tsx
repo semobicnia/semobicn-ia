@@ -24,6 +24,7 @@ import {
   applySketchDataOverrides,
   buildSketchGeometry,
   createDefaultLayoutOffsets,
+  createDefaultTextRotations,
   createEmptyBuildingVertexOffsets,
   createEmptyVertexOffsets,
   createSketchDataOverrides,
@@ -31,10 +32,12 @@ import {
   formatMeasurement,
   normalizeLayoutOffsets,
   normalizeBuildingVertexOffsets,
+  normalizeTextRotations,
   type UrbanSketchBoundaryOverride,
   type UrbanSketchDataOverrides,
   type UrbanSketchLayoutOffsets,
   type UrbanSketchSettings,
+  type UrbanSketchTextRotations,
 } from "@/lib/croqui";
 import type {
   BoundarySide,
@@ -135,6 +138,59 @@ type LayoutDragState = {
   initial: DrawingPoint;
 };
 
+type TextRotationTarget = Extract<
+  LayoutDragTarget,
+  { kind: "measurementText" | "confrontantText" | "streetText" }
+>;
+
+type TextRotationDragState = {
+  target: TextRotationTarget;
+  center: DrawingPoint;
+  baseAngle: number;
+};
+
+function normalizeAngle(angle: number) {
+  let normalized = angle;
+  while (normalized > 180) normalized -= 360;
+  while (normalized < -180) normalized += 360;
+  return normalized;
+}
+
+function rotationHandle(center: DrawingPoint, angle: number, distance = 18) {
+  const radians = (angle * Math.PI) / 180;
+  return {
+    x: center.x + Math.cos(radians) * distance,
+    y: center.y + Math.sin(radians) * distance,
+  };
+}
+
+function lineIntersection(
+  first: DrawingPoint,
+  firstDirection: DrawingPoint,
+  second: DrawingPoint,
+  secondDirection: DrawingPoint,
+) {
+  const cross =
+    firstDirection.x * secondDirection.y -
+    firstDirection.y * secondDirection.x;
+  if (Math.abs(cross) < 0.0001) return null;
+  const difference = {
+    x: second.x - first.x,
+    y: second.y - first.y,
+  };
+  const factor =
+    (difference.x * secondDirection.y -
+      difference.y * secondDirection.x) /
+    cross;
+  const intersection = {
+    x: first.x + firstDirection.x * factor,
+    y: first.y + firstDirection.y * factor,
+  };
+  return Number.isFinite(intersection.x) && Number.isFinite(intersection.y)
+    ? intersection
+    : null;
+}
+
 const sketchBoundaryLabels: Record<BoundarySide, string> = {
   front: "Frente / rua",
   right: "Flanco direito",
@@ -177,6 +233,25 @@ function outwardEdgeLabel(
     normalX: away.x / length,
     normalY: away.y / length,
   };
+}
+
+function outwardNormal(
+  start: DrawingPoint,
+  end: DrawingPoint,
+  center: DrawingPoint,
+) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.max(Math.hypot(dx, dy), 1);
+  let normalX = -dy / length;
+  let normalY = dx / length;
+  const middle = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+  const away = { x: middle.x - center.x, y: middle.y - center.y };
+  if (normalX * away.x + normalY * away.y < 0) {
+    normalX *= -1;
+    normalY *= -1;
+  }
+  return { x: normalX, y: normalY };
 }
 
 function curveControl(
@@ -237,6 +312,10 @@ export function CroquiWorkspace({
         initialSettings?.buildingVertexOffsets,
       ),
       layoutOffsets: normalizeLayoutOffsets(data, initialSettings?.layoutOffsets),
+      textRotations: normalizeTextRotations(
+        data,
+        initialSettings?.textRotations,
+      ),
       hiddenElements: Array.isArray(initialSettings?.hiddenElements)
         ? initialSettings.hiddenElements
         : [],
@@ -258,6 +337,7 @@ export function CroquiWorkspace({
   const draggingVertex = useRef<number | null>(null);
   const draggingBuildingVertex = useRef<string | null>(null);
   const draggingLayout = useRef<LayoutDragState | null>(null);
+  const draggingTextRotation = useRef<TextRotationDragState | null>(null);
   const [message, setMessage] = useState("");
   const dataOverrides = useMemo(
     () => createSketchDataOverrides(data, settings.dataOverrides),
@@ -270,6 +350,10 @@ export function CroquiWorkspace({
   const layoutOffsets = useMemo(
     () => normalizeLayoutOffsets(effectiveData, settings.layoutOffsets),
     [effectiveData, settings.layoutOffsets],
+  );
+  const textRotations = useMemo(
+    () => normalizeTextRotations(effectiveData, settings.textRotations),
+    [effectiveData, settings.textRotations],
   );
   const hiddenElements = useMemo(
     () => new Set(settings.hiddenElements),
@@ -821,6 +905,66 @@ export function CroquiWorkspace({
     }
   }
 
+  function rotationForTarget(
+    rotations: UrbanSketchTextRotations,
+    target: TextRotationTarget,
+  ) {
+    if (target.kind === "measurementText") {
+      return rotations.measurementTexts[target.index] || 0;
+    }
+    if (target.kind === "confrontantText") {
+      return rotations.confrontantTexts[target.index] || 0;
+    }
+    return rotations.streetTexts[target.index] || 0;
+  }
+
+  function beginTextRotation(
+    target: TextRotationTarget,
+    center: DrawingPoint,
+    baseAngle: number,
+    elementId: string,
+    event: ReactPointerEvent<SVGCircleElement>,
+  ) {
+    if (!editingLayout) return;
+    draggingTextRotation.current = { target, center, baseAngle };
+    setSelectedElement(elementId);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function moveTextRotation(event: ReactPointerEvent<SVGCircleElement>) {
+    const drag = draggingTextRotation.current;
+    if (!drag) return;
+    const point = pointerPosition(event);
+    if (!point) return;
+    const absoluteAngle =
+      (Math.atan2(point.y - drag.center.y, point.x - drag.center.x) * 180) /
+      Math.PI;
+    const rotation = normalizeAngle(absoluteAngle - drag.baseAngle);
+    setSettings((current) => {
+      const rotations = normalizeTextRotations(
+        effectiveData,
+        current.textRotations,
+      );
+      if (drag.target.kind === "measurementText") {
+        rotations.measurementTexts[drag.target.index] = rotation;
+      } else if (drag.target.kind === "confrontantText") {
+        rotations.confrontantTexts[drag.target.index] = rotation;
+      } else {
+        rotations.streetTexts[drag.target.index] = rotation;
+      }
+      return { ...current, textRotations: rotations };
+    });
+  }
+
+  function endTextRotation(event: ReactPointerEvent<SVGCircleElement>) {
+    draggingTextRotation.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
   function restoreCalculatedShape() {
     updateSetting(
       "vertexOffsets",
@@ -835,6 +979,7 @@ export function CroquiWorkspace({
 
   function restoreLayout() {
     updateSetting("layoutOffsets", createDefaultLayoutOffsets(effectiveData));
+    updateSetting("textRotations", createDefaultTextRotations(effectiveData));
     updateSetting("hiddenElements", []);
     setSelectedElement(null);
     setMessage("Distribuição original restaurada.");
@@ -1304,8 +1449,9 @@ export function CroquiWorkspace({
             <div className="vertex-editor-note">
               <MoveDiagonal2 size={16} />
               Arraste os controles laranja para mover o terreno, a tabela, as
-              edificações e cada texto separadamente. Clique em um controle e
-              pressione Delete para ocultar o elemento selecionado.
+              edificações e cada texto separadamente. Ao selecionar um texto,
+              arraste o controle azul para girá-lo. Pressione Delete para
+              apagar o elemento selecionado.
               <button type="button" onClick={restoreLayout}>
                 Restaurar distribuição
               </button>
@@ -1393,6 +1539,7 @@ export function CroquiWorkspace({
                   vertexOffsets: createEmptyVertexOffsets(data),
                   buildingVertexOffsets:
                     createEmptyBuildingVertexOffsets(data),
+                  textRotations: createDefaultTextRotations(data),
                   dataOverrides: createSketchDataOverrides(data),
                 })
               }
@@ -1519,7 +1666,7 @@ export function CroquiWorkspace({
               .map((edge, index) => {
                 const start = geometry.points[edge.fromVertex];
                 const end = geometry.points[edge.toVertex];
-                const placement = outwardEdgeLabel(start, end, plotCenter, 0);
+                const roadNormal = outwardNormal(start, end, plotCenter);
                 const edgeLength = Math.max(Math.hypot(end.x - start.x, end.y - start.y), 1);
                 const tangentX = (end.x - start.x) / edgeLength;
                 const tangentY = (end.y - start.y) / edgeLength;
@@ -1569,45 +1716,95 @@ export function CroquiWorkspace({
                     candidate.fromVertex === edge.toVertex &&
                     sameStreet(candidate),
                 );
-                const startExtension = previousStreet ? 0 : extension;
-                const endExtension = nextStreet ? 0 : extension;
                 const control = curveControl(start, end, plotCenter, edge.curved, edge.curveBulge);
-                const pathAt = (offset: number) => {
-                  const startX = start.x + placement.normalX * offset - tangentX * startExtension;
-                  const startY = start.y + placement.normalY * offset - tangentY * startExtension;
-                  const endX = end.x + placement.normalX * offset + tangentX * endExtension;
-                  const endY = end.y + placement.normalY * offset + tangentY * endExtension;
-                  return edge.curved
-                    ? `M ${startX} ${startY} Q ${control.x + placement.normalX * offset} ${control.y + placement.normalY * offset} ${endX} ${endY}`
-                    : `M ${startX} ${startY} L ${endX} ${endY}`;
-                };
-                const cornerConnectorAt = (offset: number) => {
-                  if (!nextStreet) return "";
-                  const nextEnd = geometry.points[nextStreet.toVertex];
-                  if (!nextEnd) return "";
-                  const nextPlacement = outwardEdgeLabel(
-                    end,
-                    nextEnd,
+                const joinedPoint = (
+                  vertex: DrawingPoint,
+                  adjacentEdge: PlotEdge | undefined,
+                  atStart: boolean,
+                  offset: number,
+                ) => {
+                  const currentBase = {
+                    x: vertex.x + roadNormal.x * offset,
+                    y: vertex.y + roadNormal.y * offset,
+                  };
+                  if (!adjacentEdge) {
+                    return {
+                      x:
+                        currentBase.x +
+                        tangentX * extension * (atStart ? -1 : 1),
+                      y:
+                        currentBase.y +
+                        tangentY * extension * (atStart ? -1 : 1),
+                    };
+                  }
+                  if (edge.curved || adjacentEdge.curved) return currentBase;
+                  const adjacentStart =
+                    geometry.points[adjacentEdge.fromVertex];
+                  const adjacentEnd = geometry.points[adjacentEdge.toVertex];
+                  if (!adjacentStart || !adjacentEnd) return currentBase;
+                  const adjacentNormal = outwardNormal(
+                    adjacentStart,
+                    adjacentEnd,
                     plotCenter,
-                    0,
                   );
-                  return `M ${end.x + placement.normalX * offset} ${end.y + placement.normalY * offset} L ${end.x + nextPlacement.normalX * offset} ${end.y + nextPlacement.normalY * offset}`;
+                  const adjacentBase = {
+                    x: vertex.x + adjacentNormal.x * offset,
+                    y: vertex.y + adjacentNormal.y * offset,
+                  };
+                  const intersection = lineIntersection(
+                    currentBase,
+                    { x: end.x - start.x, y: end.y - start.y },
+                    adjacentBase,
+                    {
+                      x: adjacentEnd.x - adjacentStart.x,
+                      y: adjacentEnd.y - adjacentStart.y,
+                    },
+                  );
+                  if (!intersection) return currentBase;
+                  const miterLength = Math.hypot(
+                    intersection.x - vertex.x,
+                    intersection.y - vertex.y,
+                  );
+                  return miterLength <= Math.max(140, offset * 6)
+                    ? intersection
+                    : currentBase;
+                };
+                const pathAt = (offset: number) => {
+                  const joinedStart = joinedPoint(
+                    start,
+                    previousStreet,
+                    true,
+                    offset,
+                  );
+                  const joinedEnd = joinedPoint(
+                    end,
+                    nextStreet,
+                    false,
+                    offset,
+                  );
+                  return edge.curved
+                    ? `M ${joinedStart.x} ${joinedStart.y} Q ${control.x + roadNormal.x * offset} ${control.y + roadNormal.y * offset} ${joinedEnd.x} ${joinedEnd.y}`
+                    : `M ${joinedStart.x} ${joinedStart.y} L ${joinedEnd.x} ${joinedEnd.y}`;
                 };
                 const streetName = showsStreetName ? chainStreetName : "";
                 const name = outwardEdgeLabel(start, end, plotCenter, 20);
                 const streetOffset = layoutOffsets.streetTexts[edge.fromVertex] || { x: 0, y: 0 };
                 const streetX = name.x + streetOffset.x;
                 const streetY = name.y + streetOffset.y;
+                const streetTarget = {
+                  kind: "streetText" as const,
+                  index: edge.fromVertex,
+                };
+                const streetAngle =
+                  name.angle + rotationForTarget(textRotations, streetTarget);
+                const streetRotationHandle = rotationHandle(
+                  { x: streetX, y: streetY },
+                  streetAngle,
+                );
                 return (
                   <g key={`street-${edge.fromVertex}-${edge.toVertex}-${index}`}>
                     <path d={pathAt(11)} fill="none" stroke="#111" strokeWidth="1" />
                     <path d={pathAt(44)} fill="none" stroke="#111" strokeWidth="1" />
-                    {nextStreet && (
-                      <>
-                        <path d={cornerConnectorAt(11)} fill="none" stroke="#111" strokeWidth="1" />
-                        <path d={cornerConnectorAt(44)} fill="none" stroke="#111" strokeWidth="1" />
-                      </>
-                    )}
                     {streetName && (
                       <text
                         x={streetX}
@@ -1616,32 +1813,70 @@ export function CroquiWorkspace({
                         dominantBaseline="middle"
                         fontSize={streetLabelFontSize(streetName)}
                         fontWeight="400"
-                        transform={`rotate(${name.angle} ${streetX} ${streetY})`}
+                        transform={`rotate(${streetAngle} ${streetX} ${streetY})`}
                       >
                         {streetName.slice(0, 38)}
                       </text>
                     )}
                     {editingLayout && streetName && (
-                      <circle
-                        data-editor-only="true"
-                        cx={streetX}
-                        cy={streetY}
-                        r="5.5"
-                        fill={selectedElement === `streetText:${edge.fromVertex}` ? "#d94b35" : "#f28c18"}
-                        stroke="white"
-                        strokeWidth="1.5"
-                        style={{ cursor: "move", touchAction: "none" }}
-                        onPointerDown={(event) =>
-                          selectAndBeginLayoutDrag(
-                            `streetText:${edge.fromVertex}`,
-                            { kind: "streetText", index: edge.fromVertex },
-                            event,
-                          )
-                        }
-                        onPointerMove={moveLayoutItem}
-                        onPointerUp={endLayoutDrag}
-                        onPointerCancel={endLayoutDrag}
-                      />
+                      <>
+                        <circle
+                          data-editor-only="true"
+                          cx={streetX}
+                          cy={streetY}
+                          r="5.5"
+                          fill={selectedElement === `streetText:${edge.fromVertex}` ? "#d94b35" : "#f28c18"}
+                          stroke="white"
+                          strokeWidth="1.5"
+                          style={{ cursor: "move", touchAction: "none" }}
+                          onPointerDown={(event) =>
+                            selectAndBeginLayoutDrag(
+                              `streetText:${edge.fromVertex}`,
+                              streetTarget,
+                              event,
+                            )
+                          }
+                          onPointerMove={moveLayoutItem}
+                          onPointerUp={endLayoutDrag}
+                          onPointerCancel={endLayoutDrag}
+                        />
+                        {selectedElement === `streetText:${edge.fromVertex}` && (
+                          <>
+                            <line
+                              data-editor-only="true"
+                              x1={streetX}
+                              y1={streetY}
+                              x2={streetRotationHandle.x}
+                              y2={streetRotationHandle.y}
+                              stroke="#1677d2"
+                              strokeWidth="1"
+                              strokeDasharray="2 2"
+                            />
+                            <circle
+                              data-editor-only="true"
+                              cx={streetRotationHandle.x}
+                              cy={streetRotationHandle.y}
+                              r="4.5"
+                              fill="#1677d2"
+                              stroke="white"
+                              strokeWidth="1.2"
+                              style={{ cursor: "grab", touchAction: "none" }}
+                              onPointerDown={(event) =>
+                                beginTextRotation(
+                                  streetTarget,
+                                  { x: streetX, y: streetY },
+                                  name.angle,
+                                  `streetText:${edge.fromVertex}`,
+                                  event,
+                                )
+                              }
+                              onPointerMove={moveTextRotation}
+                              onPointerUp={endTextRotation}
+                              onPointerCancel={endTextRotation}
+                            />
+                          </>
+                        )}
+                      </>
                     )}
                   </g>
                 );
@@ -1757,6 +1992,28 @@ export function CroquiWorkspace({
               const measurementY = measurement.y + measurementOffset.y;
               const confrontantX = confrontant.x + confrontantOffset.x;
               const confrontantY = confrontant.y + confrontantOffset.y;
+              const measurementTarget = {
+                kind: "measurementText" as const,
+                index,
+              };
+              const confrontantTarget = {
+                kind: "confrontantText" as const,
+                index,
+              };
+              const measurementAngle =
+                measurement.angle +
+                rotationForTarget(textRotations, measurementTarget);
+              const confrontantAngle =
+                confrontant.angle +
+                rotationForTarget(textRotations, confrontantTarget);
+              const measurementRotationHandle = rotationHandle(
+                { x: measurementX, y: measurementY },
+                measurementAngle,
+              );
+              const confrontantRotationHandle = rotationHandle(
+                { x: confrontantX, y: confrontantY },
+                confrontantAngle,
+              );
               return (
                 <g key={`edge-details-${index}`}>
                   {edge.measurement !== null && (
@@ -1770,7 +2027,7 @@ export function CroquiWorkspace({
                       paintOrder="stroke"
                       stroke="white"
                       strokeWidth="3"
-                      transform={`rotate(${measurement.angle} ${measurementX} ${measurementY})`}
+                      transform={`rotate(${measurementAngle} ${measurementX} ${measurementY})`}
                     >
                       {formatMeasurement(edge.measurement)} m
                     </text>
@@ -1786,54 +2043,130 @@ export function CroquiWorkspace({
                       paintOrder="stroke"
                       stroke="white"
                       strokeWidth="3"
-                      transform={`rotate(${confrontant.angle} ${confrontantX} ${confrontantY})`}
+                      transform={`rotate(${confrontantAngle} ${confrontantX} ${confrontantY})`}
                     >
                       {edge.label.toUpperCase().slice(0, 38)}
                     </text>
                   )}
                   {editingLayout && edge.measurement !== null && (
-                    <circle
-                      data-editor-only="true"
-                      cx={measurementX}
-                      cy={measurementY}
-                      r="5.5"
-                      fill={selectedElement === `measurement:${index}` ? "#d94b35" : "#f28c18"}
-                      stroke="white"
-                      strokeWidth="1.5"
-                      style={{ cursor: "move", touchAction: "none" }}
-                      onPointerDown={(event) =>
-                        selectAndBeginLayoutDrag(
-                          `measurement:${index}`,
-                          { kind: "measurementText", index },
-                          event,
-                        )
-                      }
-                      onPointerMove={moveLayoutItem}
-                      onPointerUp={endLayoutDrag}
-                      onPointerCancel={endLayoutDrag}
-                    />
+                    <>
+                      <circle
+                        data-editor-only="true"
+                        cx={measurementX}
+                        cy={measurementY}
+                        r="5.5"
+                        fill={selectedElement === `measurement:${index}` ? "#d94b35" : "#f28c18"}
+                        stroke="white"
+                        strokeWidth="1.5"
+                        style={{ cursor: "move", touchAction: "none" }}
+                        onPointerDown={(event) =>
+                          selectAndBeginLayoutDrag(
+                            `measurement:${index}`,
+                            measurementTarget,
+                            event,
+                          )
+                        }
+                        onPointerMove={moveLayoutItem}
+                        onPointerUp={endLayoutDrag}
+                        onPointerCancel={endLayoutDrag}
+                      />
+                      {selectedElement === `measurement:${index}` && (
+                        <>
+                          <line
+                            data-editor-only="true"
+                            x1={measurementX}
+                            y1={measurementY}
+                            x2={measurementRotationHandle.x}
+                            y2={measurementRotationHandle.y}
+                            stroke="#1677d2"
+                            strokeWidth="1"
+                            strokeDasharray="2 2"
+                          />
+                          <circle
+                            data-editor-only="true"
+                            cx={measurementRotationHandle.x}
+                            cy={measurementRotationHandle.y}
+                            r="4.5"
+                            fill="#1677d2"
+                            stroke="white"
+                            strokeWidth="1.2"
+                            style={{ cursor: "grab", touchAction: "none" }}
+                            onPointerDown={(event) =>
+                              beginTextRotation(
+                                measurementTarget,
+                                { x: measurementX, y: measurementY },
+                                measurement.angle,
+                                `measurement:${index}`,
+                                event,
+                              )
+                            }
+                            onPointerMove={moveTextRotation}
+                            onPointerUp={endTextRotation}
+                            onPointerCancel={endTextRotation}
+                          />
+                        </>
+                      )}
+                    </>
                   )}
                   {editingLayout && !edge.isStreet && Boolean(edge.label) && (
-                    <circle
-                      data-editor-only="true"
-                      cx={confrontantX}
-                      cy={confrontantY}
-                      r="5.5"
-                      fill={selectedElement === `confrontant:${index}` ? "#d94b35" : "#f28c18"}
-                      stroke="white"
-                      strokeWidth="1.5"
-                      style={{ cursor: "move", touchAction: "none" }}
-                      onPointerDown={(event) =>
-                        selectAndBeginLayoutDrag(
-                          `confrontant:${index}`,
-                          { kind: "confrontantText", index },
-                          event,
-                        )
-                      }
-                      onPointerMove={moveLayoutItem}
-                      onPointerUp={endLayoutDrag}
-                      onPointerCancel={endLayoutDrag}
-                    />
+                    <>
+                      <circle
+                        data-editor-only="true"
+                        cx={confrontantX}
+                        cy={confrontantY}
+                        r="5.5"
+                        fill={selectedElement === `confrontant:${index}` ? "#d94b35" : "#f28c18"}
+                        stroke="white"
+                        strokeWidth="1.5"
+                        style={{ cursor: "move", touchAction: "none" }}
+                        onPointerDown={(event) =>
+                          selectAndBeginLayoutDrag(
+                            `confrontant:${index}`,
+                            confrontantTarget,
+                            event,
+                          )
+                        }
+                        onPointerMove={moveLayoutItem}
+                        onPointerUp={endLayoutDrag}
+                        onPointerCancel={endLayoutDrag}
+                      />
+                      {selectedElement === `confrontant:${index}` && (
+                        <>
+                          <line
+                            data-editor-only="true"
+                            x1={confrontantX}
+                            y1={confrontantY}
+                            x2={confrontantRotationHandle.x}
+                            y2={confrontantRotationHandle.y}
+                            stroke="#1677d2"
+                            strokeWidth="1"
+                            strokeDasharray="2 2"
+                          />
+                          <circle
+                            data-editor-only="true"
+                            cx={confrontantRotationHandle.x}
+                            cy={confrontantRotationHandle.y}
+                            r="4.5"
+                            fill="#1677d2"
+                            stroke="white"
+                            strokeWidth="1.2"
+                            style={{ cursor: "grab", touchAction: "none" }}
+                            onPointerDown={(event) =>
+                              beginTextRotation(
+                                confrontantTarget,
+                                { x: confrontantX, y: confrontantY },
+                                confrontant.angle,
+                                `confrontant:${index}`,
+                                event,
+                              )
+                            }
+                            onPointerMove={moveTextRotation}
+                            onPointerUp={endTextRotation}
+                            onPointerCancel={endTextRotation}
+                          />
+                        </>
+                      )}
+                    </>
                   )}
                 </g>
               );
