@@ -2,7 +2,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-export function PublicHeader({ active }: { active: "home" | "register" }) {
+export function PublicHeader({
+  active,
+}: {
+  active?: "home" | "register";
+}) {
   return (
     <header className="h-[76px] shrink-0 border-b border-zinc-200/80 bg-white/90 backdrop-blur-xl sm:h-[84px]">
       <div className="mx-auto grid h-full w-full max-w-7xl grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 sm:px-7 lg:px-10">

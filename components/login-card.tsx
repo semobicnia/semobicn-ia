@@ -28,7 +28,7 @@ export function LoginCard({ error }: { error?: string }) {
   }
 
   return (
-    <main className="relative isolate grid min-h-dvh place-items-center overflow-hidden px-4 py-8 font-sans text-zinc-950">
+    <section className="relative isolate grid min-h-0 flex-1 place-items-center overflow-x-hidden overflow-y-auto px-4 py-7 font-sans text-zinc-950">
       <div
         aria-hidden="true"
         className="absolute -left-32 -top-36 -z-10 h-[28rem] w-[28rem] rounded-full bg-emerald-200/[0.45] blur-3xl"
@@ -103,6 +103,6 @@ export function LoginCard({ error }: { error?: string }) {
           Acesso restrito aos servidores autorizados.
         </CardFooter>
       </Card>
-    </main>
+    </section>
   );
 }
