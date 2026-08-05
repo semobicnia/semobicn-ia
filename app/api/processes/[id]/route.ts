@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedSession } from "@/lib/auth";
 import {
+  deleteProcess,
   getProcessDetail,
   updateProcess,
   type ProcessStatus,
@@ -44,6 +45,39 @@ export async function GET(
     );
   }
   return NextResponse.json({ process });
+}
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  const session = await getAuthenticatedSession();
+  if (!session || !session.user.role) {
+    return NextResponse.json({ error: "Sessão expirada." }, { status: 401 });
+  }
+  if (session.user.role !== "admin") {
+    return NextResponse.json(
+      { error: "Somente administradores podem excluir croquis." },
+      { status: 403 },
+    );
+  }
+
+  const { id } = await context.params;
+  if (!uuidPattern.test(id)) {
+    return NextResponse.json({ error: "Processo inválido." }, { status: 400 });
+  }
+
+  const deleted = await deleteProcess({
+    processId: id,
+    userId: session.user.id,
+  });
+  if (!deleted) {
+    return NextResponse.json(
+      { error: "Croqui não encontrado ou já excluído." },
+      { status: 404 },
+    );
+  }
+  return NextResponse.json({ success: true });
 }
 
 export async function PATCH(

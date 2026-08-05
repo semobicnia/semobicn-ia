@@ -45,7 +45,7 @@ export default async function UrbanSketchPage({
       initialSettings={sketch?.settings}
       initialLocationImageUrl={
         sketch?.locationImageAvailable
-          ? `/api/croquis/image?processo=${process.id}`
+          ? `/api/croquis/image?processo=${process.id}&versao=${encodeURIComponent(sketch.updatedAt)}`
           : undefined
       }
     />

@@ -1,8 +1,8 @@
-import { DraftingCompass, MapPinned } from "lucide-react";
-import Link from "next/link";
+import { DraftingCompass } from "lucide-react";
 import { redirect } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { AppFooter } from "@/components/app-footer";
+import { CroquisList } from "@/components/croquis-list";
 import { getAuthenticatedSession } from "@/lib/auth";
 import { listProcesses } from "@/lib/database";
 
@@ -37,52 +37,10 @@ export default async function UrbanSketchesPage() {
           </div>
         </section>
 
-        <section className="sketch-process-grid">
-          <article className="sketch-process-card sketch-demo-card">
-            <span><MapPinned size={20} /></span>
-            <div>
-              <strong>Modelo de referência</strong>
-              <small>Croqui de Maria Resende usado como padrão visual</small>
-              <small>Demonstração sem alteração no banco</small>
-            </div>
-            <Link
-              className="button secondary compact"
-              href="/croquis/novo?demonstracao=1"
-            >
-              Visualizar modelo
-            </Link>
-          </article>
-          {processes.length === 0 ? (
-            <div className="empty-state sketch-empty">
-              <MapPinned size={36} />
-              <strong>Nenhum croqui iniciado</strong>
-              <span>Envie uma foto ou PDF do desenho original para começar.</span>
-              <Link className="button primary compact" href="/sistema">
-                Criar primeiro croqui
-              </Link>
-            </div>
-          ) : (
-            processes.map((process) => (
-              <article className="sketch-process-card" key={process.id}>
-                <span><DraftingCompass size={20} /></span>
-                <div>
-                  <strong>{process.claimantName}</strong>
-                  <small>{process.propertyAddress}</small>
-                  <small>
-                    Quadra {process.blockNumber || "-"} · Lote{" "}
-                    {process.lotNumber || "-"}
-                  </small>
-                </div>
-                <Link
-                  className="button secondary compact"
-                  href={`/croquis/${process.id}`}
-                >
-                  Criar croqui
-                </Link>
-              </article>
-            ))
-          )}
-        </section>
+        <CroquisList
+          initialProcesses={processes}
+          isAdmin={session.user.role === "admin"}
+        />
       </div>
       <AppFooter />
     </main>

@@ -48,6 +48,8 @@ export type ProcessSummary = {
   createdByEmail: string;
   createdAt: string;
   updatedAt: string;
+  sketchStatus: "review" | "finalized" | null;
+  sketchLocationImageAvailable: boolean;
 };
 
 export type ProcessEvent = {
@@ -65,7 +67,10 @@ export type ProcessEvent = {
   createdAt: string;
 };
 
-export type ProcessDetail = ProcessSummary & {
+export type ProcessDetail = Omit<
+  ProcessSummary,
+  "sketchStatus" | "sketchLocationImageAvailable"
+> & {
   data: TopographicData;
   supplementaryMessage: string;
   sourceAvailable: boolean;
@@ -218,6 +223,7 @@ export async function getUrbanSketch(
         process_id: string;
         settings: Partial<UrbanSketchSettings>;
         location_image_public_id: string | null;
+        location_image_format: string | null;
         status: "review" | "finalized";
         updated_at: Date | string;
       }[]
@@ -227,6 +233,7 @@ export async function getUrbanSketch(
         process_id,
         settings,
         location_image_public_id,
+        location_image_format,
         status,
         updated_at
       from urban_sketches
@@ -241,7 +248,9 @@ export async function getUrbanSketch(
         ...defaultUrbanSketchSettings,
         ...row.settings,
       },
-      locationImageAvailable: Boolean(row.location_image_public_id),
+      locationImageAvailable: Boolean(
+        row.location_image_public_id && row.location_image_format,
+      ),
       status: row.status,
       updatedAt:
         row.updated_at instanceof Date
@@ -564,6 +573,8 @@ export async function listProcesses(input: {
         created_by_email: string | null;
         created_at: Date | string;
         updated_at: Date | string;
+        sketch_status: "review" | "finalized" | null;
+        sketch_location_image_available: boolean;
       }[]
     >`
       select
@@ -576,9 +587,15 @@ export async function listProcesses(input: {
         creator.full_name as created_by_name,
         creator.email as created_by_email,
         process.created_at,
-        process.updated_at
+        process.updated_at,
+        sketch.status as sketch_status,
+        (
+          sketch.location_image_public_id is not null
+          and sketch.location_image_format is not null
+        ) as sketch_location_image_available
       from topographic_processes process
       left join app_users creator on creator.id = process.created_by_user_id
+      left join urban_sketches sketch on sketch.process_id = process.id
       where
         (${input.role} <> 'operator' or process.created_by_user_id = ${input.userId}::uuid)
         and (
@@ -605,7 +622,35 @@ export async function listProcesses(input: {
       createdByEmail: row.created_by_email || "",
       createdAt: iso(row.created_at),
       updatedAt: iso(row.updated_at),
+      sketchStatus: row.sketch_status,
+      sketchLocationImageAvailable: row.sketch_location_image_available,
     }));
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function deleteProcess(input: {
+  processId: string;
+  userId: string;
+}): Promise<boolean> {
+  const sql = createDatabaseClient();
+  if (!sql) return false;
+
+  try {
+    const [deleted] = await sql<{ id: string }[]>`
+      delete from topographic_processes process
+      where process.id = ${input.processId}::uuid
+        and exists (
+          select 1
+          from app_users administrator
+          where administrator.id = ${input.userId}::uuid
+            and administrator.role = 'admin'
+            and administrator.active
+        )
+      returning process.id
+    `;
+    return Boolean(deleted);
   } finally {
     await sql.end();
   }

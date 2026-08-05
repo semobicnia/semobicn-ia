@@ -1721,6 +1721,40 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.sketch-card-actions {
+  align-items: stretch;
+  gap: 7px;
+}
+
+.sketch-delete-button {
+  height: 34px;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.sketch-delete-button:hover {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.sketch-process-card small.sketch-draft-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #166534;
+  white-space: normal;
+}
+
+.sketch-list-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  color: #991b1b;
+  background: #fef2f2;
+}
+
 .croqui-page {
   min-height: 100vh;
   background: transparent;
