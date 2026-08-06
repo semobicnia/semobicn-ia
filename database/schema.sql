@@ -155,6 +155,55 @@ set
   active = true,
   updated_at = now();
 
+create table if not exists secretariat_settings (
+  id smallint primary key default 1,
+  name text not null,
+  acronym text not null,
+  logo_public_id text,
+  logo_format text,
+  secretary_name text not null,
+  email text not null,
+  phone text not null,
+  full_address text not null,
+  city_hall_name text not null,
+  cnpj text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint secretariat_settings_singleton_check check (id = 1)
+);
+
+insert into secretariat_settings (
+  id,
+  name,
+  acronym,
+  secretary_name,
+  email,
+  phone,
+  full_address,
+  city_hall_name,
+  cnpj
+)
+select
+  1,
+  'Secretaria Municipal de Obras e Infraestrutura',
+  'SEMOBI',
+  coalesce(
+    (
+      select full_name
+      from municipal_secretaries
+      where active
+      order by is_default desc, updated_at desc
+      limit 1
+    ),
+    'Antonio Lustosa de Melo'
+  ),
+  '',
+  '',
+  '',
+  'Prefeitura Municipal de Coelho Neto',
+  ''
+on conflict (id) do nothing;
+
 create table if not exists topographic_processes (
   id uuid primary key default gen_random_uuid(),
   status text not null default 'review',

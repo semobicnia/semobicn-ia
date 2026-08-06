@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Building2,
   DraftingCompass,
   FileClock,
   FilePlus2,
@@ -13,6 +14,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/lib/users";
@@ -31,6 +33,28 @@ const roleLabels: Record<UserRole, string> = {
 
 export function AppHeader({ currentUser }: { currentUser: HeaderUser }) {
   const pathname = usePathname();
+  const [institution, setInstitution] = useState({
+    acronym: "SEMOBI",
+    logoUrl: "/assets/logo-semobi.png" as string | null,
+  });
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/secretaria", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((settings: { acronym?: string; logoUrl?: string | null } | null) => {
+        if (!active || !settings) return;
+        setInstitution({
+          acronym: settings.acronym || "SEMOBI",
+          logoUrl: settings.logoUrl || "/assets/logo-semobi.png",
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const links = [
     { href: "/sistema", label: "Novo croqui", icon: FilePlus2, visible: true },
     { href: "/croquis", label: "Croquis", icon: DraftingCompass, visible: true },
@@ -45,6 +69,12 @@ export function AppHeader({ currentUser }: { currentUser: HeaderUser }) {
       href: "/administracao/usuarios",
       label: "Usuários",
       icon: UsersRound,
+      visible: currentUser.role === "admin",
+    },
+    {
+      href: "/administracao/secretaria",
+      label: "Secretaria",
+      icon: Building2,
       visible: currentUser.role === "admin",
     },
     {
@@ -84,14 +114,19 @@ export function AppHeader({ currentUser }: { currentUser: HeaderUser }) {
   return (
     <header className="sticky top-0 z-40 shrink-0 border-b border-zinc-200/80 bg-white/90 shadow-sm backdrop-blur-xl">
       <div className="mx-auto flex h-[78px] w-full max-w-[1500px] items-center gap-5 px-4 sm:px-6 lg:px-8">
-        <Link className="shrink-0" href="/sistema" aria-label="Área interna SEMOBI">
+        <Link
+          className="relative block h-[50px] w-[105px] shrink-0 sm:w-[122px]"
+          href="/sistema"
+          aria-label={`Área interna ${institution.acronym}`}
+        >
           <Image
-            src="/assets/logo-semobi.png"
-            alt="SEMOBI"
-            width={1216}
-            height={522}
+            src={institution.logoUrl || "/assets/logo-semobi.png"}
+            alt={institution.acronym}
+            fill
+            sizes="(min-width: 640px) 122px, 105px"
             priority
-            className="h-auto w-[105px] sm:w-[122px]"
+            unoptimized={Boolean(institution.logoUrl?.startsWith("http"))}
+            className="object-contain object-left"
           />
         </Link>
 
