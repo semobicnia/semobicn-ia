@@ -322,7 +322,11 @@ export function SecretariatManager({ initial }: { initial: SecretariatSettings }
           {message && <div className="admin-message success">{message}</div>}
           {error && <div className="admin-message error">{error}</div>}
           <div className="flex flex-col-reverse items-stretch gap-3 border-t border-zinc-200 pt-6 sm:flex-row sm:items-center sm:justify-end">
-            <Button className="min-w-44 bg-zinc-950 text-white hover:bg-zinc-800" disabled={loading}>
+            <Button
+              className="min-w-44 bg-zinc-950 text-white hover:bg-zinc-800"
+              disabled={loading}
+              type="submit"
+            >
               {loading ? <LoaderCircle className="animate-spin" size={17} /> : <Save size={17} />}
               Salvar alterações
             </Button>
