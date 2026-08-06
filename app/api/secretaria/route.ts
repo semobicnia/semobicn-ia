@@ -7,8 +7,11 @@ import {
 import {
   getSecretariatSettings,
   saveSecretariatSettings,
-  type SecretariatSettingsInput,
 } from "@/lib/secretariat";
+import {
+  institutionalLogoSchema,
+  secretariatFormSchema,
+} from "@/lib/secretariat-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,48 +19,6 @@ export const dynamic = "force-dynamic";
 function field(form: FormData, name: string) {
   const value = form.get(name);
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
-}
-
-function validCnpj(value: string) {
-  const digits = value.replace(/\D/g, "");
-  if (digits.length !== 14 || /^(\d)\1+$/.test(digits)) return false;
-  const calculateDigit = (length: number) => {
-    const numbers = digits.slice(0, length).split("").map(Number);
-    let weight = length - 7;
-    const sum = numbers.reduce((total, number) => {
-      const result = total + number * weight;
-      weight -= 1;
-      if (weight === 1) weight = 9;
-      return result;
-    }, 0);
-    const remainder = sum % 11;
-    return remainder < 2 ? 0 : 11 - remainder;
-  };
-  return (
-    calculateDigit(12) === Number(digits[12]) &&
-    calculateDigit(13) === Number(digits[13])
-  );
-}
-
-function validate(input: SecretariatSettingsInput) {
-  const phoneDigits = input.phone.replace(/\D/g, "");
-  return (
-    input.name.length >= 5 &&
-    input.name.length <= 160 &&
-    /^[\p{L}\d.-]{2,20}$/u.test(input.acronym) &&
-    input.secretaryName.length >= 5 &&
-    input.secretaryName.length <= 140 &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email) &&
-    input.email.length <= 160 &&
-    phoneDigits.length >= 10 &&
-    phoneDigits.length <= 11 &&
-    input.phone.length <= 25 &&
-    input.fullAddress.length >= 8 &&
-    input.fullAddress.length <= 260 &&
-    input.cityHallName.length >= 5 &&
-    input.cityHallName.length <= 160 &&
-    validCnpj(input.cnpj)
-  );
 }
 
 export async function GET() {
@@ -83,7 +44,7 @@ export async function PUT(request: Request) {
   let uploadedPublicId = "";
   try {
     const form = await request.formData();
-    const input: SecretariatSettingsInput = {
+    const parsed = secretariatFormSchema.safeParse({
       name: field(form, "name"),
       acronym: field(form, "acronym").toUpperCase(),
       secretaryName: field(form, "secretaryName"),
@@ -92,21 +53,28 @@ export async function PUT(request: Request) {
       fullAddress: field(form, "fullAddress"),
       cityHallName: field(form, "cityHallName"),
       cnpj: field(form, "cnpj"),
-    };
-    if (!validate(input)) {
+    });
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Revise os campos. Informe e-mail, telefone e CNPJ válidos." },
+        {
+          error: "Revise os campos destacados antes de salvar.",
+          fieldErrors: parsed.error.flatten().fieldErrors,
+        },
         { status: 400 },
       );
     }
+    const input = parsed.data;
 
     const logo = form.get("logo");
     let storedLogo: Awaited<ReturnType<typeof storeInstitutionalLogo>> = null;
     if (logo instanceof File && logo.size > 0) {
-      const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
-      if (!allowedTypes.has(logo.type) || logo.size > 3 * 1024 * 1024) {
+      const parsedLogo = institutionalLogoSchema.safeParse(logo);
+      if (!parsedLogo.success) {
         return NextResponse.json(
-          { error: "A logo deve ser PNG, JPG ou WEBP e ter no máximo 3 MB." },
+          {
+            error: "Revise o arquivo da logo antes de salvar.",
+            fieldErrors: { logo: parsedLogo.error.issues.map((issue) => issue.message) },
+          },
           { status: 400 },
         );
       }
