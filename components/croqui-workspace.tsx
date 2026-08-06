@@ -2439,10 +2439,10 @@ export function CroquiWorkspace({
             {semobiLogo ? (
               <image
                 href={semobiLogo}
-                x="244"
-                y="600"
-                width="108"
-                height="31"
+                x="242"
+                y="586"
+                width="112"
+                height="48"
                 preserveAspectRatio="xMidYMid meet"
               />
             ) : (

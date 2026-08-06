@@ -45,10 +45,10 @@ export function LoginCard({ error }: { error?: string }) {
             <Image
               src="/assets/logo-semobi.png"
               alt="SEMOBI"
-              width={846}
-              height={258}
+              width={1216}
+              height={522}
               priority
-              className="mb-5 h-auto w-44"
+              className="mb-5 h-auto w-40"
             />
           </Link>
           <div className="mb-3 grid h-11 w-11 place-items-center rounded-2xl bg-zinc-950 text-white shadow-lg shadow-zinc-950/15">

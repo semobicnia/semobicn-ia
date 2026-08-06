@@ -88,10 +88,10 @@ export function AppHeader({ currentUser }: { currentUser: HeaderUser }) {
           <Image
             src="/assets/logo-semobi.png"
             alt="SEMOBI"
-            width={846}
-            height={258}
+            width={1216}
+            height={522}
             priority
-            className="h-auto w-[126px] sm:w-[150px]"
+            className="h-auto w-[105px] sm:w-[122px]"
           />
         </Link>
 

@@ -14,10 +14,10 @@ export function PublicHeader({
           <Image
             src="/assets/logo-semobi.png"
             alt="SEMOBI"
-            width={846}
-            height={258}
+            width={1216}
+            height={522}
             priority
-            className="h-auto w-[76px] sm:w-[150px]"
+            className="h-auto w-[70px] sm:w-[112px]"
           />
         </Link>
 

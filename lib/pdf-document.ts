@@ -2,12 +2,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   PDFDocument,
-  degrees,
   rgb,
   type PDFFont,
   type PDFPage,
 } from "pdf-lib";
-import { boundaryLabels, type TopographicData } from "./topographic";
+import { type TopographicData } from "./topographic";
 
 // O pacote é mantido localmente para que a incorporação da Open Sans funcione
 // de forma idêntica no desenvolvimento e na Vercel.
@@ -34,7 +33,6 @@ type Fonts = {
 type RichSpan = {
   text: string;
   font?: FontStyle;
-  italic?: boolean;
 };
 
 type RichToken = Omit<RichSpan, "text"> & {
@@ -53,13 +51,16 @@ function formatNumber(
   });
 }
 
-function formatDate(value: string) {
+function formatInstitutionalDate(value: string) {
   const date = new Date(`${value}T12:00:00`);
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "numeric",
+  const [day, , month, , year] = new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
     month: "long",
     year: "numeric",
-  }).format(date);
+  })
+    .format(date)
+    .split(" ");
+  return `${day} de ${month.charAt(0).toUpperCase()}${month.slice(1)} de ${year}`;
 }
 
 function getFont(fonts: Fonts, style: FontStyle | undefined) {
@@ -75,7 +76,6 @@ function toTokens(spans: RichSpan[], fonts: Fonts, size: number) {
       tokens.push({
         text: word,
         font: span.font,
-        italic: span.italic,
         width: font.widthOfTextAtSize(word, size),
       });
     }
@@ -191,18 +191,18 @@ function boundarySentence(
           maximumFractionDigits: 2,
         })}m`;
   const measurementWords = boundary.measurementInWords
-    ? `; (${boundary.measurementInWords})`
+    ? boundary.measurementInWords.trim()
     : "";
 
   return [
-    { text: boundaryName(boundary.side), font: "bold" },
+    { text: `${boundaryName(boundary.side).toUpperCase()}:`, font: "bold" },
     { text: "limitando-se com" },
     { text: label, font: "bold" },
     { text: "medindo:" },
     { text: `${measurement};`, font: "bold" },
     {
       text: measurementWords
-        ? `${measurementWords.slice(2)}${endMark}`
+        ? `(${measurementWords})${endMark}`
         : endMark,
     },
   ];
@@ -246,17 +246,15 @@ export async function createTopographicPdf(data: TopographicData) {
         : "titular";
   const residenceText =
     data.claimantSex === "female"
-      ? `residente e domiciliada nesta cidade de ${data.city} - ${data.state}.`
-      : data.claimantSex === "male"
-        ? `residente e domiciliado nesta cidade de ${data.city} - ${data.state}.`
-        : `residente nesta cidade de ${data.city} - ${data.state}.`;
+      ? `residente e domiciliada nesta cidade de ${data.city}/${data.state}.`
+      : `residente e domiciliado nesta cidade de ${data.city}/${data.state}.`;
 
   const visibleLogoTop = A4.height - TOP_MARGIN;
-  const logoGap = 14;
+  const logoGap = 16;
   const headerCenter = A4.width / 2;
-  const semobiWidth = 132;
+  const semobiWidth = 118;
   const semobiHeight = (semobiLogo.height / semobiLogo.width) * semobiWidth;
-  const cityWidth = 156;
+  const cityWidth = 155;
   const cityHeight = (cityLogo.height / cityLogo.width) * cityWidth;
   // Os arquivos possuem margens brancas internas diferentes. Estes limites
   // representam a área realmente desenhada em cada PNG e mantêm os pixels
@@ -264,10 +262,10 @@ export async function createTopographicPdf(data: TopographicData) {
   const semobiScale = semobiWidth / semobiLogo.width;
   const cityScale = cityWidth / cityLogo.width;
   const semobiVisible = {
-    left: 16 * semobiScale,
-    top: 23 * semobiScale,
-    right: 824 * semobiScale,
-    bottom: 245 * semobiScale,
+    left: 19 * semobiScale,
+    top: 19 * semobiScale,
+    right: 1200 * semobiScale,
+    bottom: 491 * semobiScale,
   };
   const cityVisible = {
     left: 0,
@@ -288,62 +286,56 @@ export async function createTopographicPdf(data: TopographicData) {
   const semobiVisibleBottom = semobiCanvasTop - semobiVisible.bottom;
   const cityVisibleBottom = cityCanvasTop - cityVisible.bottom;
   const visibleLogoBottom = Math.min(semobiVisibleBottom, cityVisibleBottom);
-  page.drawLine({
-    start: { x: headerCenter, y: visibleLogoBottom },
-    end: { x: headerCenter, y: visibleLogoTop },
-    thickness: 1.25,
-    color: BLUE,
-  });
   page.drawImage(cityLogo, {
     x: cityX,
     y: cityCanvasTop - cityHeight,
     width: cityWidth,
     height: cityHeight,
   });
-  const headerRuleY = visibleLogoBottom - 11;
+  const headerRuleY = visibleLogoBottom - 10;
   page.drawLine({
     start: { x: MARGIN, y: headerRuleY },
     end: { x: A4.width - MARGIN, y: headerRuleY },
-    thickness: 0.65,
-    color: BLACK,
+    thickness: 0.55,
+    color: BLUE,
   });
 
-  const watermarkText = "SEMOBI";
-  const watermarkSize = 76;
-  const watermarkAngle = 51;
-  const watermarkWidth = fonts.bold.widthOfTextAtSize(
-    watermarkText,
-    watermarkSize,
-  );
-  const watermarkRadians = (watermarkAngle * Math.PI) / 180;
-  const watermarkCenterOffsetX =
-    (watermarkWidth / 2) * Math.cos(watermarkRadians) -
-    (watermarkSize / 2) * Math.sin(watermarkRadians);
-  const watermarkCenterOffsetY =
-    (watermarkWidth / 2) * Math.sin(watermarkRadians) +
-    (watermarkSize / 2) * Math.cos(watermarkRadians);
-  page.drawText("SEMOBI", {
-    x: A4.width / 2 - watermarkCenterOffsetX,
-    y: A4.height / 2 - watermarkCenterOffsetY,
-    size: watermarkSize,
+  const titleSize = 14;
+  const titleLine1 = "INFORMAÇÕES TOPOGRÁFICAS DE";
+  const titleLine2 = "CROQUI URBANO";
+  page.drawText(titleLine1, {
+    x: (A4.width - fonts.bold.widthOfTextAtSize(titleLine1, titleSize)) / 2,
+    y: headerRuleY - 31,
+    size: titleSize,
     font: fonts.bold,
-    color: rgb(0.95, 0.95, 0.95),
-    rotate: degrees(watermarkAngle),
+    color: BLUE,
+  });
+  page.drawText(titleLine2, {
+    x: (A4.width - fonts.bold.widthOfTextAtSize(titleLine2, titleSize)) / 2,
+    y: headerRuleY - 50,
+    size: titleSize,
+    font: fonts.bold,
+    color: BLUE,
   });
 
-  let y = headerRuleY - 39;
-  y = drawHeading(page, "1 - INFORMAÇÕES TOPOGRÁFICAS:", y, fonts);
+  let y = headerRuleY - 103;
+  y = drawHeading(page, "1.  REQUERENTE:", y, fonts);
   y = drawRichParagraph(
     page,
     [
-      { text: "Com referência do terreno requerido por" },
+      { text: "Com referência ao" },
+      {
+        text: `REQUERIMENTO: ${data.requestNumber || "NÃO INFORMADO"}`,
+        font: "bold",
+      },
+      { text: "solicitado por" },
       {
         text: `${data.claimantName.toUpperCase()},`,
         font: "bold",
       },
       { text: `${nationality}, ${holder} do` },
       {
-        text: `CPF/CNPJ nº ${data.cpf || "não informado"},`,
+        text: `CPF/CNPJ: ${data.cpf || "não informado"},`,
         font: "bold",
       },
       { text: residenceText },
@@ -354,39 +346,38 @@ export async function createTopographicPdf(data: TopographicData) {
   );
   y -= SECTION_TEXT_SPACING;
 
-  y = drawHeading(page, "2 - SITUAÇÃO:", y, fonts);
-  const situationSpans: RichSpan[] = [
-    {
-      text: `${data.propertyAddress.toUpperCase()},`,
-      font: "bold",
-    },
-  ];
+  y = drawHeading(page, "2.  SITUAÇÃO/LOCALIZAÇÃO:", y, fonts);
+  const situationSpans: RichSpan[] = [];
   if (data.block) {
-    situationSpans.push({
-      text: `QUADRA: ${data.block},`,
-      font: "bold",
-    });
-  }
-  if (data.lot) {
-    situationSpans.push({
-      text: `LOTE: ${data.lot},`,
-      font: "bold",
-    });
-  }
-  if (data.neighborhood) {
     situationSpans.push(
-      { text: "Bairro:" },
-      {
-        text: `${data.neighborhood.toUpperCase()},`,
-        font: "bold",
-      },
+      { text: "QUADRA:", font: "bold" },
+      { text: `${data.block},` },
     );
   }
-  situationSpans.push({ text: `${data.city} - ${data.state}.` });
+  if (data.lot) {
+    situationSpans.push(
+      { text: "LOTE:", font: "bold" },
+      { text: `${data.lot},` },
+    );
+  }
+  situationSpans.push({
+    text: `${data.propertyAddress.toUpperCase()},`,
+    font: "bold",
+  });
+  if (data.neighborhood) {
+    situationSpans.push({
+      text: `${data.neighborhood.toUpperCase()},`,
+      font: "bold",
+    });
+  }
+  situationSpans.push({
+    text: `${data.city.toUpperCase()}, ${data.state.toUpperCase()}.`,
+    font: "bold",
+  });
   y = drawRichParagraph(page, situationSpans, y, fonts, { justify: false });
   y -= SECTION_TEXT_SPACING;
 
-  y = drawHeading(page, "3 - LIMITES E CONFRONTANTES:", y, fonts);
+  y = drawHeading(page, "3.  LIMITES E CONFRONTANTES:", y, fonts);
 
   const boundarySpans: RichSpan[] = [];
   data.boundaries.forEach((boundary, index) => {
@@ -402,7 +393,7 @@ export async function createTopographicPdf(data: TopographicData) {
     maximumFractionDigits: 2,
   })}m²;`;
   boundarySpans.push(
-    { text: "Perfazendo uma área total equivalente a" },
+    { text: "Perfazendo uma área total equivalente à" },
     { text: landArea, font: "bold" },
   );
   if (data.landAreaInWords) {
@@ -414,7 +405,7 @@ export async function createTopographicPdf(data: TopographicData) {
   });
   y -= SECTION_TEXT_SPACING;
 
-  y = drawHeading(page, "4 - UTILIZAÇÃO:", y, fonts);
+  y = drawHeading(page, "4.  UTILIZAÇÃO E BENFEITORIAS:", y, fonts);
   const building =
     data.builtArea && data.builtArea > 0
       ? `${formatNumber(data.builtArea)}m²${
@@ -424,8 +415,8 @@ export async function createTopographicPdf(data: TopographicData) {
   y = drawRichParagraph(
     page,
     [
-      { text: "I - IMÓVEL:", font: "bold", italic: true },
-      { text: `${building}.`, italic: true },
+      { text: "I.   IMÓVEL:", font: "bold" },
+      { text: `${building};` },
     ],
     y,
     fonts,
@@ -434,8 +425,8 @@ export async function createTopographicPdf(data: TopographicData) {
   y = drawRichParagraph(
     page,
     [
-      { text: "II - DELIMITAÇÃO:", font: "bold", italic: true },
-      { text: `${data.delimitation}.`, italic: true },
+      { text: "II.   DELIMITAÇÕES:", font: "bold" },
+      { text: `${data.delimitation};` },
     ],
     y,
     fonts,
@@ -444,8 +435,8 @@ export async function createTopographicPdf(data: TopographicData) {
   y = drawRichParagraph(
     page,
     [
-      { text: "III - OUTRAS BENFEITORIAS:", font: "bold", italic: true },
-      { text: `${data.improvements.join(", ")}.`, italic: true },
+      { text: "III.   BENFEITORIAS:", font: "bold" },
+      { text: `${data.improvements.join(", ")}.` },
     ],
     y,
     fonts,
@@ -453,7 +444,7 @@ export async function createTopographicPdf(data: TopographicData) {
   );
   y -= SECTION_TEXT_SPACING;
 
-  const dateLine = `${data.city} (${data.state}), ${formatDate(data.documentDate)}.`;
+  const dateLine = `${data.city}, ${data.state}, ${formatInstitutionalDate(data.documentDate)}`;
   const dateWidth = fonts.regular.widthOfTextAtSize(dateLine, 11);
   page.drawText(dateLine, {
     x: (A4.width - dateWidth) / 2,
@@ -463,39 +454,29 @@ export async function createTopographicPdf(data: TopographicData) {
     color: BLACK,
   });
 
-  const signatureY = 105;
-  page.drawLine({
-    start: { x: 84, y: signatureY + 25 },
-    end: { x: 270, y: signatureY + 25 },
-    thickness: 0.5,
-    color: BLACK,
-  });
-  page.drawLine({
-    start: { x: 325, y: signatureY + 25 },
-    end: { x: 511, y: signatureY + 25 },
-    thickness: 0.5,
-    color: BLACK,
-  });
+  const signatureY = 92;
   const leftName = data.technicalResponsible.fullName;
   const rightName = data.worksInspector.fullName;
   const technicalTitle =
     data.technicalResponsible.sex === "female"
-      ? "Resp. Técnica - SEMOBI"
+      ? "RESP. TÉCNICA - SEMOBI"
       : data.technicalResponsible.sex === "male"
-        ? "Resp. Técnico - SEMOBI"
-        : "Resp. Técnico(a) - SEMOBI";
-  const inspectorTitle = "Fiscal de Obras";
-  const technicalRegistration = data.technicalResponsible.registration;
-  const inspectorRegistration = data.worksInspector.registration;
+        ? "RESP. TÉCNICO - SEMOBI"
+        : "RESP. TÉCNICO(A) - SEMOBI";
+  const inspectorTitle = "FISCAL DE OBRAS";
+  const technicalRegistration = data.technicalResponsible.registration.toUpperCase();
+  const inspectorRegistration = data.worksInspector.registration
+    .replace(/^mat\.?\s*/i, "MATRÍCULA: ")
+    .toUpperCase();
   page.drawText(leftName, {
     x: 177 - fonts.regular.widthOfTextAtSize(leftName, 8.7) / 2,
-    y: signatureY + 11,
+    y: signatureY + 12,
     size: 8.7,
     font: fonts.regular,
   });
   page.drawText(technicalTitle, {
     x: 177 - fonts.regular.widthOfTextAtSize(technicalTitle, 7.7) / 2,
-    y: signatureY,
+    y: signatureY + 1,
     size: 7.7,
     font: fonts.regular,
   });
@@ -503,25 +484,25 @@ export async function createTopographicPdf(data: TopographicData) {
     x:
       177 -
       fonts.regular.widthOfTextAtSize(technicalRegistration, 6.8) / 2,
-    y: signatureY - 11,
+    y: signatureY - 10,
     size: 6.8,
     font: fonts.regular,
   });
   page.drawText(rightName, {
     x: 418 - fonts.regular.widthOfTextAtSize(rightName, 8.4) / 2,
-    y: signatureY + 11,
+    y: signatureY + 12,
     size: 8.4,
     font: fonts.regular,
   });
   page.drawText(inspectorTitle, {
     x: 418 - fonts.regular.widthOfTextAtSize(inspectorTitle, 7.7) / 2,
-    y: signatureY,
+    y: signatureY + 1,
     size: 7.7,
     font: fonts.regular,
   });
   page.drawText(inspectorRegistration, {
     x: 418 - fonts.regular.widthOfTextAtSize(inspectorRegistration, 7.7) / 2,
-    y: signatureY - 11,
+    y: signatureY - 10,
     size: 7.7,
     font: fonts.regular,
   });
@@ -529,22 +510,24 @@ export async function createTopographicPdf(data: TopographicData) {
   page.drawLine({
     start: { x: MARGIN, y: 43 },
     end: { x: A4.width - MARGIN, y: 43 },
-    thickness: 0.5,
-    color: BLACK,
+    thickness: 0.55,
+    color: BLUE,
   });
-  const footer1 = "Avenida José Silva, S/N - Bairro Quiabos";
-  const footer2 = "Coelho Neto - MA - CEP: 65.620-000";
+  const footer1 = "CEP: 65620-000 | AVENIDA JOSE SILVA, SN, QUIABOS - COELHO NETO - MA";
+  const footer2 = "PREFEITURA MUL DE COELHO NETO | CNPJ: 05.281.738/0001-98";
   page.drawText(footer1, {
     x: (A4.width - fonts.bold.widthOfTextAtSize(footer1, 7.1)) / 2,
     y: 29,
     size: 7.1,
     font: fonts.bold,
+    color: BLUE,
   });
   page.drawText(footer2, {
     x: (A4.width - fonts.bold.widthOfTextAtSize(footer2, 7.1)) / 2,
     y: 18,
     size: 7.1,
     font: fonts.bold,
+    color: BLUE,
   });
 
   document.setTitle(
