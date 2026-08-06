@@ -199,6 +199,68 @@ const sketchBoundaryLabels: Record<BoundarySide, string> = {
   back: "Fundo",
 };
 
+const fourSideEdgeIndex: Record<BoundarySide, number> = {
+  front: 0,
+  right: 1,
+  back: 2,
+  left: 3,
+};
+
+function normalizedLimitant(value: string) {
+  return value.trim().toLocaleUpperCase("pt-BR");
+}
+
+function sameMeasurement(
+  first: number | null,
+  second: number | null,
+) {
+  return first === second ||
+    (typeof first === "number" &&
+      typeof second === "number" &&
+      Math.abs(first - second) < 0.001);
+}
+
+/**
+ * Relaciona os quatro limites textuais com as faces efetivamente desenhadas.
+ * Croquis irregulares podem ter várias faces para uma mesma rua; nesse caso,
+ * todas recebem a correção do nome, enquanto a medida usa a correspondência
+ * mais específica disponível.
+ */
+function boundaryEdgeIndexes(
+  overrides: UrbanSketchDataOverrides,
+  side: BoundarySide,
+  key: keyof Omit<UrbanSketchBoundaryOverride, "side">,
+) {
+  const boundary = overrides.boundaries.find((item) => item.side === side);
+  if (!boundary || overrides.edges.length === 0) return [];
+
+  const label = normalizedLimitant(boundary.label);
+  const labelMatches = overrides.edges.flatMap((edge, index) => {
+    const edgeLabels = [edge.label, edge.streetName]
+      .map(normalizedLimitant)
+      .filter(Boolean);
+    return label && edgeLabels.includes(label) ? [index] : [];
+  });
+
+  if (labelMatches.length > 0) {
+    if (key === "label") return labelMatches;
+    const exactMeasurements = labelMatches.filter((index) =>
+      sameMeasurement(overrides.edges[index].measurement, boundary.measurement),
+    );
+    return exactMeasurements.length > 0 ? exactMeasurements : labelMatches;
+  }
+
+  const measurementMatches = overrides.edges.flatMap((edge, index) =>
+    sameMeasurement(edge.measurement, boundary.measurement) ? [index] : [],
+  );
+  if (measurementMatches.length === 1) return measurementMatches;
+
+  if (overrides.edges.length === 4) {
+    return [fourSideEdgeIndex[side]];
+  }
+  return [];
+}
+
 function edgeLabel(
   start: DrawingPoint,
   end: DrawingPoint,
@@ -602,8 +664,20 @@ export function CroquiWorkspace({
   ) {
     setSettings((current) => {
       const overrides = createSketchDataOverrides(data, current.dataOverrides);
+      const edgeIndexes = boundaryEdgeIndexes(overrides, side, key);
+      const restoredElements = edgeIndexes.flatMap((index) =>
+        key === "measurement"
+          ? [`measurement:${index}`]
+          : [
+              `confrontant:${index}`,
+              `streetText:${overrides.edges[index]?.fromVertex ?? index}`,
+            ],
+      );
       return {
         ...current,
+        hiddenElements: current.hiddenElements.filter(
+          (item) => !restoredElements.includes(item),
+        ),
         dataOverrides: {
           ...overrides,
           boundaries: overrides.boundaries.map((boundary) =>
@@ -611,6 +685,17 @@ export function CroquiWorkspace({
               ? { ...boundary, [key]: value }
               : boundary,
           ),
+          edges: overrides.edges.map((edge, index) => {
+            if (!edgeIndexes.includes(index)) return edge;
+            if (key === "label") {
+              return {
+                ...edge,
+                label: String(value),
+                streetName: edge.isStreet ? String(value) : edge.streetName,
+              };
+            }
+            return { ...edge, measurement: value as number | null };
+          }),
         },
       };
     });
