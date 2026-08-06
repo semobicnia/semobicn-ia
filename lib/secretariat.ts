@@ -88,7 +88,6 @@ export async function ensureSecretariatSettingsTable(sql: Sql) {
       '', '', '',
       'Prefeitura Municipal de Coelho Neto',
       ''
-    )
     on conflict (id) do nothing
   `;
 }

@@ -227,6 +227,11 @@ export async function storeInstitutionalLogo(
     { method: "POST", body: form },
   );
   if (!response.ok) {
+    const details = await response.text();
+    console.error("Falha no upload da logo institucional:", {
+      status: response.status,
+      details: details.slice(0, 500),
+    });
     throw new Error("Falha ao armazenar a logo institucional.");
   }
 
@@ -235,6 +240,9 @@ export async function storeInstitutionalLogo(
     public_id: string;
     format: string;
   };
+  if (!result.public_id || !result.format || !result.secure_url) {
+    throw new Error("O Cloudinary não confirmou o armazenamento da logo.");
+  }
   return {
     url: result.secure_url,
     publicId: result.public_id,
