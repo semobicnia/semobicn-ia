@@ -346,6 +346,10 @@ function streetLabelFontSize(label: string) {
   return 9;
 }
 
+const ROAD_NEAR_EDGE_OFFSET = 11;
+const ROAD_WIDTH = 33;
+const ROAD_FAR_EDGE_OFFSET = ROAD_NEAR_EDGE_OFFSET + ROAD_WIDTH;
+
 function formatDocumentDate(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value || "-";
@@ -1939,15 +1943,18 @@ export function CroquiWorkspace({
                 const showsStreetName =
                   preferredNameEdge.fromVertex === edge.fromVertex &&
                   preferredNameEdge.toVertex === edge.toVertex;
+                // Qualquer via que chegue ao mesmo vértice participa do
+                // encontro. Antes, ruas com nomes diferentes eram ignoradas
+                // e os dois bordos eram prolongados além do cruzamento.
                 const previousStreet = geometry.edges.find(
                   (candidate) =>
                     candidate.toVertex === edge.fromVertex &&
-                    sameStreet(candidate),
+                    candidate.isStreet,
                 );
                 const nextStreet = geometry.edges.find(
                   (candidate) =>
                     candidate.fromVertex === edge.toVertex &&
-                    sameStreet(candidate),
+                    candidate.isStreet,
                 );
                 const control = curveControl(start, end, plotCenter, edge.curved, edge.curveBulge);
                 const joinedPoint = (
@@ -2036,8 +2043,18 @@ export function CroquiWorkspace({
                 );
                 return (
                   <g key={`street-${edge.fromVertex}-${edge.toVertex}-${index}`}>
-                    <path d={pathAt(11)} fill="none" stroke="#111" strokeWidth="1" />
-                    <path d={pathAt(44)} fill="none" stroke="#111" strokeWidth="1" />
+                    <path
+                      d={pathAt(ROAD_NEAR_EDGE_OFFSET)}
+                      fill="none"
+                      stroke="#111"
+                      strokeWidth="1"
+                    />
+                    <path
+                      d={pathAt(ROAD_FAR_EDGE_OFFSET)}
+                      fill="none"
+                      stroke="#111"
+                      strokeWidth="1"
+                    />
                     {streetName && (
                       <text
                         x={streetX}
