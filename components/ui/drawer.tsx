@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useState,
   type HTMLAttributes,
   type ReactNode,
 } from "react";
@@ -30,11 +31,16 @@ export function Drawer({
 }: DrawerContextValue & { children: ReactNode }) {
   useEffect(() => {
     if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onOpenChange(false);
     };
     document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
   }, [open, onOpenChange]);
 
   return (
@@ -68,21 +74,42 @@ export function DrawerContent({
   ...props
 }: HTMLAttributes<HTMLDivElement>) {
   const { open, onOpenChange } = useDrawer();
-  if (!open) return null;
+  const [mounted, setMounted] = useState(open);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      const frame = requestAnimationFrame(() => setVisible(true));
+      return () => cancelAnimationFrame(frame);
+    }
+
+    setVisible(false);
+    const timer = window.setTimeout(() => setMounted(false), 760);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+
+  if (!mounted) return null;
 
   return (
-    <div className="fixed inset-0 z-[80]" role="presentation">
+    <div className="fixed inset-0 z-[80] overflow-hidden" role="presentation">
       <button
         type="button"
         aria-label="Fechar painel"
-        className="absolute inset-0 bg-zinc-950/45 backdrop-blur-[1px]"
+        className={cn(
+          "absolute inset-0 bg-zinc-900/35 backdrop-blur-md transition-opacity duration-700 ease-out motion-reduce:transition-none",
+          visible ? "opacity-100" : "opacity-0",
+        )}
         onClick={() => onOpenChange(false)}
       />
       <section
         role="dialog"
         aria-modal="true"
         className={cn(
-          "absolute inset-y-0 left-0 flex w-[min(92vw,440px)] flex-col border-r border-zinc-200 bg-white shadow-2xl",
+          "absolute bottom-4 left-4 top-4 flex w-[min(calc(100vw-2rem),440px)] flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white/95 shadow-[0_28px_80px_rgba(9,9,11,0.28)] transition-[transform,opacity] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+          visible
+            ? "translate-x-0 opacity-100"
+            : "-translate-x-[calc(100%+2rem)] opacity-70",
           className,
         )}
         {...props}
@@ -96,6 +123,15 @@ export function DrawerContent({
           <X size={17} />
         </button>
         {children}
+        <div className="border-t border-zinc-200/80 bg-white/95 px-5 py-4">
+          <button
+            type="button"
+            className="flex h-10 w-full items-center justify-center rounded-full bg-zinc-950 text-sm font-semibold text-white transition hover:bg-zinc-800"
+            onClick={() => onOpenChange(false)}
+          >
+            Fechar
+          </button>
+        </div>
       </section>
     </div>
   );
