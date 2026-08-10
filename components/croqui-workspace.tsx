@@ -2,13 +2,16 @@
 
 import {
   ArrowRight,
+  Calculator,
   Download,
   FileDown,
   ImagePlus,
   LoaderCircle,
   MoveDiagonal2,
+  Plus,
   RotateCcw,
   Save,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { PDFDocument } from "pdf-lib";
@@ -21,6 +24,7 @@ import {
 } from "react";
 import { AppHeader, type HeaderUser } from "./app-header";
 import { AppFooter } from "./app-footer";
+import { calculateSketchAreas } from "@/lib/area-calculation";
 import {
   applySketchDataOverrides,
   buildSketchGeometry,
@@ -228,10 +232,10 @@ function sameMeasurement(
  */
 function boundaryEdgeIndexes(
   overrides: UrbanSketchDataOverrides,
-  side: BoundarySide,
+  boundaryIndex: number,
   key: keyof Omit<UrbanSketchBoundaryOverride, "side">,
 ) {
-  const boundary = overrides.boundaries.find((item) => item.side === side);
+  const boundary = overrides.boundaries[boundaryIndex];
   if (!boundary || overrides.edges.length === 0) return [];
 
   const label = normalizedLimitant(boundary.label);
@@ -256,7 +260,7 @@ function boundaryEdgeIndexes(
   if (measurementMatches.length === 1) return measurementMatches;
 
   if (overrides.edges.length === 4) {
-    return [fourSideEdgeIndex[side]];
+    return [fourSideEdgeIndex[boundary.side]];
   }
   return [];
 }
@@ -658,13 +662,13 @@ export function CroquiWorkspace({
   }
 
   function updateBoundaryOverride(
-    side: BoundarySide,
+    boundaryIndex: number,
     key: keyof Omit<UrbanSketchBoundaryOverride, "side">,
     value: string | number | null,
   ) {
     setSettings((current) => {
       const overrides = createSketchDataOverrides(data, current.dataOverrides);
-      const edgeIndexes = boundaryEdgeIndexes(overrides, side, key);
+      const edgeIndexes = boundaryEdgeIndexes(overrides, boundaryIndex, key);
       const restoredElements = edgeIndexes.flatMap((index) =>
         key === "measurement"
           ? [`measurement:${index}`]
@@ -680,8 +684,8 @@ export function CroquiWorkspace({
         ),
         dataOverrides: {
           ...overrides,
-          boundaries: overrides.boundaries.map((boundary) =>
-            boundary.side === side
+          boundaries: overrides.boundaries.map((boundary, index) =>
+            index === boundaryIndex
               ? { ...boundary, [key]: value }
               : boundary,
           ),
@@ -699,6 +703,97 @@ export function CroquiWorkspace({
         },
       };
     });
+  }
+
+  function updateBoundarySide(index: number, side: BoundarySide) {
+    setSettings((current) => {
+      const overrides = createSketchDataOverrides(data, current.dataOverrides);
+      return {
+        ...current,
+        dataOverrides: {
+          ...overrides,
+          boundaries: overrides.boundaries.map((boundary, boundaryIndex) =>
+            boundaryIndex === index ? { ...boundary, side } : boundary,
+          ),
+        },
+      };
+    });
+  }
+
+  function addBoundaryOverride() {
+    setSettings((current) => {
+      const overrides = createSketchDataOverrides(data, current.dataOverrides);
+      return {
+        ...current,
+        dataOverrides: {
+          ...overrides,
+          boundaries: [
+            ...overrides.boundaries,
+            {
+              side: "left",
+              label: "",
+              measurement: null,
+            } satisfies UrbanSketchBoundaryOverride,
+          ].slice(0, 12),
+        },
+      };
+    });
+  }
+
+  function removeBoundaryOverride(index: number) {
+    if (index < 4) return;
+    setSettings((current) => {
+      const overrides = createSketchDataOverrides(data, current.dataOverrides);
+      return {
+        ...current,
+        dataOverrides: {
+          ...overrides,
+          boundaries: overrides.boundaries.filter(
+            (_, boundaryIndex) => boundaryIndex !== index,
+          ),
+        },
+      };
+    });
+  }
+
+  function calculateAreasFromSketch() {
+    const measurement = (side: BoundarySide) =>
+      dataOverrides.boundaries.find((boundary) => boundary.side === side)
+        ?.measurement ?? null;
+    const calculated = calculateSketchAreas({
+      vertices: effectiveData.plotGeometry.vertices,
+      drawingPoints: geometry.points,
+      edges: geometry.edges,
+      buildings: geometry.buildings,
+      oppositeSides: {
+        front: measurement("front"),
+        right: measurement("right"),
+        back: measurement("back"),
+        left: measurement("left"),
+      },
+    });
+    if (calculated.landArea === null) {
+      setMessage(
+        "Informe coordenadas ou medidas suficientes para calcular a área.",
+      );
+      return;
+    }
+    setSettings((current) => {
+      const overrides = createSketchDataOverrides(data, current.dataOverrides);
+      return {
+        ...current,
+        dataOverrides: {
+          ...overrides,
+          landArea: calculated.landArea,
+          builtArea: calculated.builtArea ?? overrides.builtArea,
+        },
+      };
+    });
+    setMessage(
+      calculated.approximate
+        ? "Áreas estimadas pela geometria e medidas; confirme os valores antes de aprovar."
+        : "Áreas calculadas pelas coordenadas dos vértices.",
+    );
   }
 
   function updateEdgeOverride<K extends keyof PlotEdge>(
@@ -1326,17 +1421,50 @@ export function CroquiWorkspace({
                 />
               </label>
             </div>
+            <button
+              type="button"
+              className="button secondary compact"
+              onClick={calculateAreasFromSketch}
+            >
+              <Calculator size={15} />
+              Calcular áreas pelo desenho
+            </button>
             <div className="croqui-boundary-corrections">
               <strong>Rua, limites e medidas</strong>
-              {dataOverrides.boundaries.map((boundary) => (
-                <div className="croqui-boundary-correction" key={boundary.side}>
+              {dataOverrides.boundaries.map((boundary, index) => (
+                <div
+                  className="croqui-boundary-correction"
+                  key={boundary.side + "-" + index}
+                >
+                  {index >= 4 && (
+                    <label className="field">
+                      <span>Lado do confrontante complementar</span>
+                      <select
+                        value={boundary.side}
+                        onChange={(event) =>
+                          updateBoundarySide(
+                            index,
+                            event.target.value as BoundarySide,
+                          )
+                        }
+                      >
+                        {Object.entries(sketchBoundaryLabels).map(
+                          ([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </label>
+                  )}
                   <label className="field">
                     <span>{sketchBoundaryLabels[boundary.side]}</span>
                     <input
                       value={boundary.label}
                       onChange={(event) =>
                         updateBoundaryOverride(
-                          boundary.side,
+                          index,
                           "label",
                           event.target.value,
                         )
@@ -1352,7 +1480,7 @@ export function CroquiWorkspace({
                       value={boundary.measurement ?? ""}
                       onChange={(event) =>
                         updateBoundaryOverride(
-                          boundary.side,
+                          index,
                           "measurement",
                           event.target.value === ""
                             ? null
@@ -1361,8 +1489,27 @@ export function CroquiWorkspace({
                       }
                     />
                   </label>
+                  {index >= 4 && (
+                    <button
+                      type="button"
+                      className="button ghost compact"
+                      onClick={() => removeBoundaryOverride(index)}
+                    >
+                      <Trash2 size={14} />
+                      Remover
+                    </button>
+                  )}
                 </div>
               ))}
+              <button
+                type="button"
+                className="button secondary compact"
+                onClick={addBoundaryOverride}
+                disabled={dataOverrides.boundaries.length >= 12}
+              >
+                <Plus size={15} />
+                Adicionar limitante
+              </button>
             </div>
             {dataOverrides.edges.length > 0 && (
               <div className="croqui-boundary-corrections">
