@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  Calculator,
   Check,
   CheckCircle2,
   Download,
@@ -12,16 +13,22 @@ import {
   FileText,
   LoaderCircle,
   MapPinned,
+  Plus,
   RotateCcw,
   Save,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UploadCloud,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AppHeader } from "@/components/app-header";
 import { AppFooter } from "@/components/app-footer";
+import {
+  areaInWords,
+  calculateSketchAreas,
+} from "@/lib/area-calculation";
 import type {
   ProcessEvent,
   ProcessStatus,
@@ -33,6 +40,8 @@ import {
   defaultWorksInspector,
   getActiveReviewNotes,
   sampleTopographicData,
+  type Boundary,
+  type BoundarySide,
   type SexCode,
   type SexOption,
   type StaffMember,
@@ -316,6 +325,69 @@ export function Workspace({
     value: TopographicData[K],
   ) {
     setData((current) => ({ ...current, [key]: value }));
+  }
+
+  function calculateMissingAreas() {
+    const measurement = (side: BoundarySide) =>
+      data.boundaries.find((boundary) => boundary.side === side)?.measurement ??
+      null;
+    const calculated = calculateSketchAreas({
+      vertices: data.plotGeometry.vertices,
+      edges: data.plotGeometry.edges,
+      buildings: data.plotGeometry.buildings.map((building) => building.vertices),
+      oppositeSides: {
+        front: measurement("front"),
+        right: measurement("right"),
+        back: measurement("back"),
+        left: measurement("left"),
+      },
+    });
+    if (calculated.landArea === null) {
+      setSavedMessage(
+        "Informe coordenadas ou medidas suficientes para calcular a área.",
+      );
+      return;
+    }
+    setData((current) => ({
+      ...current,
+      landArea: calculated.landArea,
+      landAreaInWords: areaInWords(calculated.landArea),
+      builtArea: calculated.builtArea ?? current.builtArea,
+      builtAreaInWords:
+        calculated.builtArea === null
+          ? current.builtAreaInWords
+          : areaInWords(calculated.builtArea),
+    }));
+    setSavedMessage(
+      calculated.approximate
+        ? "Áreas estimadas pela geometria e pelas medidas. Revise antes de aprovar."
+        : "Áreas calculadas pelas coordenadas dos vértices.",
+    );
+  }
+
+  function addBoundary() {
+    setData((current) => ({
+      ...current,
+      boundaries: [
+        ...current.boundaries,
+        {
+          side: "left",
+          label: "",
+          measurement: null,
+          measurementInWords: "",
+        } satisfies Boundary,
+      ].slice(0, 12),
+    }));
+  }
+
+  function removeBoundary(index: number) {
+    if (index < 4) return;
+    setData((current) => ({
+      ...current,
+      boundaries: current.boundaries.filter(
+        (_, boundaryIndex) => boundaryIndex !== index,
+      ),
+    }));
   }
 
   async function analyze() {
@@ -884,6 +956,19 @@ export function Workspace({
                         />
                       </div>
                     )}
+                    <div className="span-two inline-form-actions">
+                      <button
+                        type="button"
+                        className="button secondary compact"
+                        onClick={calculateMissingAreas}
+                      >
+                        <Calculator size={15} />
+                        Calcular áreas
+                      </button>
+                      <small>
+                        Usa coordenadas, medidas e proporções do desenho.
+                      </small>
+                    </div>
                   </div>
                 </Section>
 
@@ -894,8 +979,34 @@ export function Workspace({
                 >
                   <div className="boundary-list">
                     {data.boundaries.map((boundary, index) => (
-                      <div className="boundary-row" key={boundary.side}>
-                        <strong>{boundaryLabels[boundary.side]}</strong>
+                      <div
+                        className="boundary-row"
+                        key={boundary.side + "-" + index}
+                      >
+                        {index < 4 ? (
+                          <strong>{boundaryLabels[boundary.side]}</strong>
+                        ) : (
+                          <select
+                            aria-label={"Lado do confrontante " + (index + 1)}
+                            value={boundary.side}
+                            onChange={(event) => {
+                              const boundaries = [...data.boundaries];
+                              boundaries[index] = {
+                                ...boundary,
+                                side: event.target.value as BoundarySide,
+                              };
+                              update("boundaries", boundaries);
+                            }}
+                          >
+                            {Object.entries(boundaryLabels).map(
+                              ([value, label]) => (
+                                <option key={value} value={value}>
+                                  {label}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        )}
                         <input
                           aria-label={`Confrontante - ${boundaryLabels[boundary.side]}`}
                           value={boundary.label}
@@ -930,6 +1041,7 @@ export function Workspace({
                         </div>
                         <input
                           aria-label={`Medida por extenso - ${boundaryLabels[boundary.side]}`}
+                          className="boundary-words"
                           value={boundary.measurementInWords}
                           placeholder="Medida por extenso"
                           onChange={(event) => {
@@ -941,9 +1053,31 @@ export function Workspace({
                             update("boundaries", boundaries);
                           }}
                         />
+                        {index >= 4 ? (
+                          <button
+                            type="button"
+                            className="boundary-remove"
+                            aria-label="Remover confrontante complementar"
+                            title="Remover confrontante"
+                            onClick={() => removeBoundary(index)}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        ) : (
+                          <span className="boundary-row-spacer" />
+                        )}
                       </div>
                     ))}
                   </div>
+                  <button
+                    type="button"
+                    className="button secondary compact boundary-add"
+                    onClick={addBoundary}
+                    disabled={data.boundaries.length >= 12}
+                  >
+                    <Plus size={15} />
+                    Adicionar limitante
+                  </button>
                 </Section>
 
                 <Section
