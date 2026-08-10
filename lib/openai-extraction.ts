@@ -211,6 +211,15 @@ function extractOutputText(response: {
   );
 }
 
+function parseConfidenceThreshold(value: string | undefined) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : 0.6;
+}
+
+function extractionConfidence(data: TopographicData) {
+  return Math.min(data.confidence, data.plotGeometry.confidence);
+}
+
 export async function extractTopographicData(
   filename: string,
   mimeType: string,
@@ -289,102 +298,136 @@ ${supplementaryMessage.trim() || "Nenhuma."}`;
           detail: "auto",
         };
 
-  let response: Response;
-  try {
-    response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-5.6-terra",
-        reasoning: { effort: "medium" },
-        input: [
-          {
-            role: "user",
-            content: [
-              { type: "input_text", text: prompt },
-              visualInput,
-            ],
-          },
-        ],
-        text: {
-          verbosity: "low",
-          format: {
-            type: "json_schema",
-            name: "topographic_information",
-            strict: true,
-            schema,
-          },
+  async function runExtraction(model: string, effort: "medium" | "high") {
+    let response: Response;
+    try {
+      response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
         },
-      }),
-      signal: AbortSignal.timeout(240_000),
-    });
-  } catch (error) {
-    console.error("Falha de conexão com a OpenAI", error);
-    if (error instanceof Error && error.name === "TimeoutError") {
-      throw new Error(
-        "A análise demorou além do limite. Tente novamente; se persistir, envie uma foto mais nítida.",
-      );
+        body: JSON.stringify({
+          model,
+          reasoning: { effort },
+          input: [
+            {
+              role: "user",
+              content: [{ type: "input_text", text: prompt }, visualInput],
+            },
+          ],
+          text: {
+            verbosity: "low",
+            format: {
+              type: "json_schema",
+              name: "topographic_information",
+              strict: true,
+              schema,
+            },
+          },
+        }),
+        signal: AbortSignal.timeout(240_000),
+      });
+    } catch (error) {
+      console.error("Falha de conexão com a OpenAI", { model, error });
+      if (error instanceof Error && error.name === "TimeoutError") {
+        throw new Error(
+          "A análise demorou além do limite. Tente novamente; se persistir, envie uma foto mais nítida.",
+        );
+      }
+      throw new Error("Não foi possível analisar o croqui neste momento.");
     }
-    throw new Error("Não foi possível analisar o croqui neste momento.");
+
+    if (!response.ok) {
+      const detail = await response.text();
+      console.error("Falha da OpenAI ao analisar croqui", {
+        model,
+        status: response.status,
+        detail: detail.slice(0, 2000),
+      });
+      if (detail.includes("invalid_api_key")) {
+        throw new Error("A chave da OpenAI não foi aceita.");
+      }
+      if (
+        detail.includes("model_not_found") ||
+        detail.includes("does not exist")
+      ) {
+        throw new Error(
+          "O modelo de análise configurado não está disponível para esta conta.",
+        );
+      }
+      if (detail.includes("insufficient_quota")) {
+        throw new Error(
+          "Os créditos da OpenAI estão insuficientes. Verifique o faturamento da API.",
+        );
+      }
+      if (response.status === 429) {
+        throw new Error(
+          "O limite temporário da OpenAI foi atingido. Aguarde alguns segundos e tente novamente.",
+        );
+      }
+      if (response.status === 408 || response.status === 504) {
+        throw new Error(
+          "A análise demorou além do limite. Tente novamente; se persistir, envie uma foto mais nítida.",
+        );
+      }
+      if (response.status === 400 && /image|file|mime|format/i.test(detail)) {
+        throw new Error(
+          "A OpenAI não conseguiu processar este arquivo. Tente convertê-lo para JPG ou PDF.",
+        );
+      }
+      throw new Error("Não foi possível analisar o croqui neste momento.");
+    }
+
+    const payload = (await response.json()) as Parameters<
+      typeof extractOutputText
+    >[0] & { status?: string; incomplete_details?: { reason?: string } };
+    const outputText = extractOutputText(payload);
+    if (!outputText) {
+      console.error("Resposta da OpenAI sem dados estruturados", {
+        model,
+        status: payload.status,
+        incompleteReason: payload.incomplete_details?.reason,
+      });
+      if (payload.status === "incomplete") {
+        throw new Error(
+          "A análise foi interrompida antes de concluir todos os campos. Tente novamente.",
+        );
+      }
+      throw new Error("A análise não retornou dados estruturados.");
+    }
+
+    return normalizeTopographicData(
+      JSON.parse(outputText) as Partial<TopographicData>,
+    );
   }
 
-  if (!response.ok) {
-    const detail = await response.text();
-    console.error("Falha da OpenAI ao analisar croqui", {
-      status: response.status,
-      detail: detail.slice(0, 2000),
-    });
-    if (detail.includes("invalid_api_key")) {
-      throw new Error("A chave da OpenAI não foi aceita.");
-    }
-    if (detail.includes("model_not_found") || detail.includes("does not exist")) {
-      throw new Error(
-        "O modelo de análise configurado não está disponível para esta conta.",
-      );
-    }
-    if (detail.includes("insufficient_quota")) {
-      throw new Error(
-        "Os créditos da OpenAI estão insuficientes. Verifique o faturamento da API.",
-      );
-    }
-    if (response.status === 429) {
-      throw new Error(
-        "O limite temporário da OpenAI foi atingido. Aguarde alguns segundos e tente novamente.",
-      );
-    }
-    if (response.status === 408 || response.status === 504) {
-      throw new Error(
-        "A análise demorou além do limite. Tente novamente; se persistir, envie uma foto mais nítida.",
-      );
-    }
-    if (response.status === 400 && /image|file|mime|format/i.test(detail)) {
-      throw new Error(
-        "A OpenAI não conseguiu processar este arquivo. Tente convertê-lo para JPG ou PDF.",
-      );
-    }
-    throw new Error("Não foi possível analisar o croqui neste momento.");
-  }
-
-  const payload = (await response.json()) as Parameters<
-    typeof extractOutputText
-  >[0] & { status?: string; incomplete_details?: { reason?: string } };
-  const outputText = extractOutputText(payload);
-  if (!outputText) {
-    console.error("Resposta da OpenAI sem dados estruturados", {
-      status: payload.status,
-      incompleteReason: payload.incomplete_details?.reason,
-    });
-    if (payload.status === "incomplete") {
-      throw new Error(
-        "A análise foi interrompida antes de concluir todos os campos. Tente novamente.",
-      );
-    }
-    throw new Error("A análise não retornou dados estruturados.");
-  }
-  return normalizeTopographicData(
-    JSON.parse(outputText) as Partial<TopographicData>,
+  const primaryModel = process.env.OPENAI_MODEL?.trim() || "gpt-5.6-terra";
+  const fallbackModel =
+    process.env.OPENAI_FALLBACK_MODEL?.trim() || "gpt-5.6-sol";
+  const fallbackThreshold = parseConfidenceThreshold(
+    process.env.OPENAI_FALLBACK_CONFIDENCE,
   );
+
+  const primaryData = await runExtraction(primaryModel, "medium");
+  const primaryConfidence = extractionConfidence(primaryData);
+  if (
+    primaryModel === fallbackModel ||
+    primaryConfidence >= fallbackThreshold
+  ) {
+    return primaryData;
+  }
+
+  try {
+    const fallbackData = await runExtraction(fallbackModel, "high");
+    return extractionConfidence(fallbackData) > primaryConfidence
+      ? fallbackData
+      : primaryData;
+  } catch (error) {
+    console.error("Segunda análise não concluída; mantendo o resultado principal", {
+      fallbackModel,
+      error,
+    });
+    return primaryData;
+  }
 }
