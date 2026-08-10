@@ -216,6 +216,10 @@ function parseConfidenceThreshold(value: string | undefined) {
   return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : 0.6;
 }
 
+function isAutomaticFallbackEnabled(value: string | undefined) {
+  return value?.trim().toLowerCase() === "true";
+}
+
 function extractionConfidence(data: TopographicData) {
   return Math.min(data.confidence, data.plotGeometry.confidence);
 }
@@ -411,10 +415,14 @@ ${supplementaryMessage.trim() || "Nenhuma."}`;
   const fallbackThreshold = parseConfidenceThreshold(
     process.env.OPENAI_FALLBACK_CONFIDENCE,
   );
+  const automaticFallback = isAutomaticFallbackEnabled(
+    process.env.OPENAI_AUTO_FALLBACK,
+  );
 
   const primaryData = await runExtraction(primaryModel, "medium");
   const primaryConfidence = extractionConfidence(primaryData);
   if (
+    !automaticFallback ||
     primaryModel === fallbackModel ||
     primaryConfidence >= fallbackThreshold
   ) {
