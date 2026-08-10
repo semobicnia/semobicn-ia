@@ -11,6 +11,7 @@ import {
   Plus,
   RotateCcw,
   Save,
+  SlidersHorizontal,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
@@ -24,6 +25,15 @@ import {
 } from "react";
 import { AppHeader, type HeaderUser } from "./app-header";
 import { AppFooter } from "./app-footer";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
+import { Switch } from "@/components/ui/switch";
 import { calculateSketchAreas } from "@/lib/area-calculation";
 import {
   applySketchDataOverrides,
@@ -404,6 +414,7 @@ export function CroquiWorkspace({
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [editingVertices, setEditingVertices] = useState(false);
   const [editingLayout, setEditingLayout] = useState(false);
+  const [dataDrawerOpen, setDataDrawerOpen] = useState(false);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const draggingVertex = useRef<number | null>(null);
   const draggingBuildingVertex = useRef<string | null>(null);
@@ -1290,6 +1301,20 @@ export function CroquiWorkspace({
             />
           </label>
 
+          <Drawer open={dataDrawerOpen} onOpenChange={setDataDrawerOpen}>
+            <DrawerTrigger className="button secondary croqui-drawer-trigger">
+              <SlidersHorizontal size={17} />
+              Revisar dados do croqui
+            </DrawerTrigger>
+            <DrawerContent>
+              <DrawerHeader>
+                <DrawerTitle>Dados do croqui</DrawerTitle>
+                <DrawerDescription>
+                  Confira e corrija os dados interpretados sem reduzir a área
+                  disponível para o desenho.
+                </DrawerDescription>
+              </DrawerHeader>
+              <div className="croqui-drawer-body">
           <label className="field">
             <span>Escala indicada</span>
             <select
@@ -1625,40 +1650,40 @@ export function CroquiWorkspace({
               </div>
             )}
           </section>
+              </div>
+            </DrawerContent>
+          </Drawer>
 
-          <label className="check-row">
-            <input
-              type="checkbox"
+          <div className="check-row switch-row">
+            <Switch
               checked={settings.showBuilding}
-              onChange={(event) =>
-                updateSetting("showBuilding", event.target.checked)
+              onCheckedChange={(checked) =>
+                updateSetting("showBuilding", checked)
               }
             />
-            Mostrar área construída
-          </label>
+            <span>Mostrar área construída</span>
+          </div>
 
-          <label className="check-row">
-            <input
-              type="checkbox"
+          <div className="check-row switch-row">
+            <Switch
               checked={settings.approximationNotice}
-              onChange={(event) =>
-                updateSetting("approximationNotice", event.target.checked)
+              onCheckedChange={(checked) =>
+                updateSetting("approximationNotice", checked)
               }
             />
-            Exibir aviso de representação aproximada
-          </label>
+            <span>Exibir aviso de representação aproximada</span>
+          </div>
 
-          <label className="check-row">
-            <input
-              type="checkbox"
+          <div className="check-row switch-row">
+            <Switch
               checked={editingVertices}
-              onChange={(event) => {
-                setEditingVertices(event.target.checked);
-                if (event.target.checked) setEditingLayout(false);
+              onCheckedChange={(checked) => {
+                setEditingVertices(checked);
+                if (checked) setEditingLayout(false);
               }}
             />
-            Ajustar vértices manualmente
-          </label>
+            <span>Ajustar vértices manualmente</span>
+          </div>
           {editingVertices && (
             <div className="vertex-editor-note">
               <MoveDiagonal2 size={16} />
@@ -1670,18 +1695,17 @@ export function CroquiWorkspace({
             </div>
           )}
 
-          <label className="check-row">
-            <input
-              type="checkbox"
+          <div className="check-row switch-row">
+            <Switch
               checked={editingLayout}
-              onChange={(event) => {
-                setEditingLayout(event.target.checked);
-                if (event.target.checked) setEditingVertices(false);
-                if (!event.target.checked) setSelectedElement(null);
+              onCheckedChange={(checked) => {
+                setEditingLayout(checked);
+                if (checked) setEditingVertices(false);
+                if (!checked) setSelectedElement(null);
               }}
             />
-            Ajustar distribuição do desenho
-          </label>
+            <span>Ajustar distribuição do desenho</span>
+          </div>
           {editingLayout && (
             <div className="vertex-editor-note">
               <MoveDiagonal2 size={16} />
