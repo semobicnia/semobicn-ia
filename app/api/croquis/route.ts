@@ -135,14 +135,16 @@ function validDataOverrides(value: unknown) {
       );
     }) &&
     Array.isArray(overrides.boundaries) &&
-    overrides.boundaries.length === 4 &&
-    new Set(
-      overrides.boundaries.map((boundary) =>
-        boundary && typeof boundary === "object"
-          ? (boundary as { side?: unknown }).side
-          : null,
+    overrides.boundaries.length >= 4 &&
+    overrides.boundaries.length <= 12 &&
+    [...validSides].every((side) =>
+      (overrides.boundaries as unknown[]).some(
+        (boundary) =>
+          boundary &&
+          typeof boundary === "object" &&
+          (boundary as { side?: unknown }).side === side,
       ),
-    ).size === 4 &&
+    ) &&
     overrides.boundaries.every((boundary) => {
       if (!boundary || typeof boundary !== "object") return false;
       const item = boundary as Record<string, unknown>;
