@@ -3,6 +3,7 @@ import type {
   PlotEdge,
   TopographicData,
 } from "./topographic";
+import { areaInWords } from "./area-calculation";
 
 export type UrbanSketchBoundaryOverride = {
   side: BoundarySide;
@@ -171,6 +172,23 @@ export function createSketchDataOverrides(
   data: TopographicData,
   saved?: UrbanSketchDataOverrides,
 ): UrbanSketchDataOverrides {
+  const boundaries = data.boundaries.map((boundary, index) => {
+    const stored =
+      saved?.boundaries[index] ??
+      saved?.boundaries.find((item) => item.side === boundary.side);
+    return {
+      side: stored?.side ?? boundary.side,
+      label: stored?.label ?? boundary.label,
+      measurement: stored ? stored.measurement : boundary.measurement,
+    };
+  });
+  if (saved?.boundaries.length && saved.boundaries.length > boundaries.length) {
+    boundaries.push(
+      ...saved.boundaries.slice(boundaries.length, 12).map((boundary) => ({
+        ...boundary,
+      })),
+    );
+  }
   return {
     requestNumber: saved?.requestNumber ?? data.requestNumber,
     claimantName: saved?.claimantName ?? data.claimantName,
@@ -191,16 +209,7 @@ export function createSketchDataOverrides(
       fromVertex: edge.fromVertex,
       toVertex: edge.toVertex,
     })),
-    boundaries: data.boundaries.map((boundary) => {
-      const stored = saved?.boundaries.find(
-        (item) => item.side === boundary.side,
-      );
-      return {
-        side: boundary.side,
-        label: stored?.label ?? boundary.label,
-        measurement: stored ? stored.measurement : boundary.measurement,
-      };
-    }),
+    boundaries,
   };
 }
 
@@ -217,7 +226,9 @@ export function applySketchDataOverrides(
     block: overrides.block,
     lot: overrides.lot,
     landArea: overrides.landArea,
+    landAreaInWords: areaInWords(overrides.landArea),
     builtArea: overrides.builtArea,
+    builtAreaInWords: areaInWords(overrides.builtArea),
     plotGeometry: {
       ...data.plotGeometry,
       vertices: data.plotGeometry.vertices.map((vertex, index) => ({
@@ -234,18 +245,17 @@ export function applySketchDataOverrides(
         toVertex: edge.toVertex,
       })),
     },
-    boundaries: data.boundaries.map((boundary) => {
-      const corrected = overrides.boundaries.find(
-        (item) => item.side === boundary.side,
-      );
-      return corrected
-        ? {
-            ...boundary,
-            label: corrected.label,
-            measurement: corrected.measurement,
-          }
-        : boundary;
-    }),
+    boundaries: overrides.boundaries.map((corrected, index) => ({
+      ...(data.boundaries[index] ?? {
+        side: corrected.side,
+        label: "",
+        measurement: null,
+        measurementInWords: "",
+      }),
+      side: corrected.side,
+      label: corrected.label,
+      measurement: corrected.measurement,
+    })),
   };
 }
 
