@@ -38,7 +38,7 @@ const schema = {
     boundaries: {
       type: "array",
       minItems: 4,
-      maxItems: 4,
+      maxItems: 12,
       items: {
         type: "object",
         additionalProperties: false,
@@ -250,7 +250,10 @@ Regras obrigatórias:
 - Faça duas leituras visuais antes de responder: primeiro os campos e caixas do formulário; depois somente a área grande do desenho para reconstruir terreno, ruas, confrontantes, medidas e edificações.
 - Em desenhos irregulares, percorra visualmente o contorno do terreno vértice por vértice. Não confunda as duas linhas paralelas de uma rua com duas faces do terreno.
 - Um contorno manuscrito pode terminar visualmente encostado em uma rua, margem ou outro segmento sem fechar perfeitamente por causa do traço da caneta. Quando a continuidade do lote for inequívoca, feche o polígono de forma aproximada e registre essa inferência em plotGeometry.reviewNotes, em vez de descartar toda a geometria.
-- Associe cada nome de rua, vizinho e medida ao lado mais próximo do desenho. Confira vírgulas e pontos decimais e confronte as medidas com a área indicada.
+- Defina primeiro a frente do imóvel: é o lado voltado para a rua de acesso principal. Para classificar direita e esquerda, imagine sempre uma pessoa dentro do terreno, olhando para essa rua/frente. O lado que fica à mão direita dessa pessoa é o flanco direito; o lado à mão esquerda é o flanco esquerdo. Nunca use a direita e a esquerda da folha, da foto ou da tela como referência.
+- Associe cada nome de rua, vizinho, curso d'água e medida ao lado mais próximo do desenho. Confira vírgulas e pontos decimais e confronte as medidas com a área indicada.
+- Reconheça córregos, riachos, rios, canais e valas desenhados por linhas curvas ou sinuosas como confrontantes naturais. Eles não são ruas: use isStreet=false, preserve o nome completo no label e marque curved=true somente quando a própria face do terreno acompanhar a curva.
+- Quando um mesmo flanco tiver mais de um confrontante independente, por exemplo um vizinho e um córrego, mantenha o registro principal do flanco e acrescente outro item em boundaries com o mesmo side. Não descarte o curso d'água e não o substitua por TERRENOS DE TERCEIROS.
 - Quando houver mais de uma leitura plausível, não escolha silenciosamente: use o valor mais legível e registre a alternativa ou a dúvida em reviewNotes para correção humana.
 - Não invente dados ilegíveis; use string vazia ou null e registre a dúvida em reviewNotes.
 - Extraia em bci o número do BCI, cadastro imobiliário ou inscrição imobiliária quando aparecer no desenho.
@@ -264,7 +267,7 @@ Regras obrigatórias:
 - Escreva landAreaInWords e builtAreaInWords por extenso em português, incluindo "metros quadrados".
 - Escreva cada medida linear por extenso em measurementInWords, convertendo a parte decimal para centímetros.
 - Use a data que aparece no croqui, em YYYY-MM-DD. Quando não houver data, retorne string vazia; o sistema usará a data de criação.
-- Retorne exatamente quatro limites: front, right, left e back.
+- Retorne primeiro os quatro limites canônicos: front, right, left e back. Acrescente itens complementares, até o máximo de doze, quando uma face ou um mesmo flanco possuir mais de um confrontante independente.
 - Além dos quatro limites textuais, reconstrua a geometria visual em plotGeometry. Ela deve representar o contorno real do terreno, inclusive quando possuir 3, 5 ou mais faces.
 - Em plotGeometry.vertices, informe os vértices do terreno em ordem horária, usando coordenadas normalizadas de 0 a 1000 conforme a posição no desenho original (x cresce para a direita e y para baixo). Não inclua vértices de cotas, setas ou construções.
 - Quando o documento fornecer coordenadas topográficas ou geográficas reais para um ponto, preserve-as como texto em coordinateX e coordinateY, inclusive vírgulas e casas decimais. Quando não houver coordenadas reais, retorne string vazia nesses dois campos; nunca use as coordenadas normalizadas do desenho como coordenadas reais.
