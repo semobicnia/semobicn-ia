@@ -614,7 +614,8 @@ button:disabled {
 .message-field textarea,
 .field input,
 .field select,
-.boundary-row input {
+.boundary-row input,
+.boundary-row select {
   outline: none;
   border: 1px solid #cfd9e2;
   border-radius: 9px;
@@ -628,7 +629,8 @@ button:disabled {
 .message-field textarea:focus,
 .field input:focus,
 .field select:focus,
-.boundary-row input:focus {
+.boundary-row input:focus,
+.boundary-row select:focus {
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(22, 88, 168, 0.1);
 }
@@ -898,7 +900,8 @@ button:disabled {
 
 .field input,
 .field select,
-.boundary-row input {
+.boundary-row input,
+.boundary-row select {
   width: 100%;
   height: 40px;
   padding: 0 11px;
@@ -917,7 +920,8 @@ button:disabled {
 
 .boundary-row {
   display: grid;
-  grid-template-columns: 100px minmax(140px, 1.2fr) 95px minmax(180px, 1fr);
+  grid-template-columns:
+    100px minmax(140px, 1.2fr) 95px minmax(180px, 1fr) 32px;
   gap: 9px;
   align-items: center;
 }
@@ -925,6 +929,48 @@ button:disabled {
 .boundary-row > strong {
   color: #405469;
   font-size: 10.5px;
+}
+
+.boundary-row select {
+  appearance: auto;
+}
+
+.boundary-remove {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e2c8c3;
+  border-radius: 8px;
+  color: #a33f32;
+  background: #fff8f6;
+  cursor: pointer;
+}
+
+.boundary-row-spacer {
+  width: 32px;
+}
+
+.boundary-add,
+.inline-form-actions {
+  margin-top: 10px;
+}
+
+.inline-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.inline-form-actions small {
+  color: #718292;
+  font-size: 10px;
+}
+
+.button.compact {
+  min-height: 36px;
+  padding: 8px 13px;
 }
 
 .measure-input {
@@ -2312,11 +2358,11 @@ button:disabled {
   }
 
   .boundary-row {
-    grid-template-columns: 90px 1fr 90px;
+    grid-template-columns: 90px 1fr 90px 32px;
   }
 
-  .boundary-row > input:last-child {
-    grid-column: 2 / -1;
+  .boundary-row > .boundary-words {
+    grid-column: 2 / 4;
   }
 
   .admin-grid {
@@ -2414,7 +2460,7 @@ button:disabled {
   }
 
   .boundary-row {
-    grid-template-columns: 1fr 85px;
+    grid-template-columns: 1fr 85px 32px;
     padding: 12px;
     border: 1px solid #e0e7ed;
     border-radius: 10px;
@@ -2424,8 +2470,17 @@ button:disabled {
     grid-column: 1 / -1;
   }
 
-  .boundary-row > input:last-child {
+  .boundary-row > .boundary-words {
+    grid-column: 1 / 3;
+  }
+
+  .boundary-row select {
     grid-column: 1 / -1;
+  }
+
+  .inline-form-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .panel-actions {
