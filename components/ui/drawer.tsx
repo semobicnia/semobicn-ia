@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { X } from "lucide-react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
 type DrawerContextValue = {
@@ -91,8 +92,8 @@ export function DrawerContent({
 
   if (!mounted) return null;
 
-  return (
-    <div className="fixed inset-0 z-[80] overflow-hidden" role="presentation">
+  return createPortal(
+    <div className="fixed inset-0 z-[200] overflow-hidden" role="presentation">
       <button
         type="button"
         aria-label="Fechar painel"
@@ -133,7 +134,8 @@ export function DrawerContent({
           </button>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
