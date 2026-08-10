@@ -1840,6 +1840,31 @@ button:disabled {
   line-height: 1.55;
 }
 
+.croqui-drawer-trigger {
+  width: 100%;
+  justify-content: center;
+}
+
+.croqui-drawer-body {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 17px;
+  padding: 20px 24px 32px;
+  overscroll-behavior: contain;
+}
+
+.switch-row {
+  min-height: 32px;
+  justify-content: flex-start;
+}
+
+.switch-row > span {
+  line-height: 1.35;
+}
+
 .location-upload {
   min-height: 44px;
   display: flex;
