@@ -443,17 +443,12 @@ function normalizePlotGeometry(value: Partial<PlotGeometry> | undefined) {
 export function normalizeTopographicData(
   data: Partial<TopographicData>,
 ): TopographicData {
-  const merged: TopographicData = {
-    ...initialTopographicData,
-    ...data,
-    sourceLayout:
-      data.sourceLayout === "structured_form"
-        ? "structured_form"
-        : "free_sketch",
-    requestNumber: data.requestNumber?.trim() || "",
-    claimantSex: normalizeSex(data.claimantSex),
-    boundaries: initialTopographicData.boundaries.map((fallback) => {
-      const found = data.boundaries?.find(
+  const sourceBoundaries = Array.isArray(data.boundaries)
+    ? data.boundaries.slice(0, 12)
+    : [];
+  const canonicalBoundaries = initialTopographicData.boundaries.map(
+    (fallback) => {
+      const found = sourceBoundaries.find(
         (boundary) => boundary.side === fallback.side,
       );
       return {
@@ -465,7 +460,45 @@ export function normalizeTopographicData(
           typeof found?.measurement === "number" ? found.measurement : null,
         measurementInWords: found?.measurementInWords?.trim() || "",
       };
-    }),
+    },
+  );
+  const usedCanonicalIndexes = new Set(
+    initialTopographicData.boundaries
+      .map((fallback) =>
+        sourceBoundaries.findIndex(
+          (boundary) => boundary.side === fallback.side,
+        ),
+      )
+      .filter((index) => index >= 0),
+  );
+  const complementaryBoundaries = sourceBoundaries.flatMap(
+    (boundary, index) =>
+      usedCanonicalIndexes.has(index) ||
+      !["front", "right", "left", "back"].includes(boundary.side)
+        ? []
+        : [
+            {
+              side: boundary.side,
+              label: boundary.label?.trim() || "TERRENOS DE TERCEIROS",
+              measurement:
+                typeof boundary.measurement === "number"
+                  ? boundary.measurement
+                  : null,
+              measurementInWords:
+                boundary.measurementInWords?.trim() || "",
+            },
+          ],
+  );
+  const merged: TopographicData = {
+    ...initialTopographicData,
+    ...data,
+    sourceLayout:
+      data.sourceLayout === "structured_form"
+        ? "structured_form"
+        : "free_sketch",
+    requestNumber: data.requestNumber?.trim() || "",
+    claimantSex: normalizeSex(data.claimantSex),
+    boundaries: [...canonicalBoundaries, ...complementaryBoundaries],
     plotGeometry: normalizePlotGeometry(data.plotGeometry),
     improvements:
       data.improvements?.filter(Boolean) ??
