@@ -1182,7 +1182,12 @@ export function CroquiWorkspace({
   }
 
   async function saveSketch(finalize = false) {
+    const confirmedSettings = {
+      ...settings,
+      dataReviewConfirmed: true,
+    };
     if (!processId) {
+      setSettings(confirmedSettings);
       setMessage("O modelo de demonstração não altera nenhum processo.");
       return;
     }
@@ -1219,12 +1224,17 @@ export function CroquiWorkspace({
       const response = await fetch("/api/croquis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ processId, settings, finalize }),
+        body: JSON.stringify({
+          processId,
+          settings: confirmedSettings,
+          finalize,
+        }),
       });
       const result = (await response.json()) as { error?: string };
       if (!response.ok) {
         throw new Error(result.error || "Não foi possível salvar o croqui.");
       }
+      setSettings(confirmedSettings);
       if (finalize) {
         window.location.href = `/processos/${processId}`;
         return;
@@ -1302,7 +1312,11 @@ export function CroquiWorkspace({
           </label>
 
           <Drawer open={dataDrawerOpen} onOpenChange={setDataDrawerOpen}>
-            <DrawerTrigger className="button secondary croqui-drawer-trigger">
+            <DrawerTrigger
+              className={`button secondary croqui-drawer-trigger ${
+                settings.dataReviewConfirmed ? "is-reviewed" : "needs-review"
+              }`}
+            >
               <SlidersHorizontal size={17} />
               Revisar dados do croqui
             </DrawerTrigger>
