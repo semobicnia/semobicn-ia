@@ -51,6 +51,7 @@ export type UrbanSketchSettings = {
   bci: string;
   sketchNumber: string;
   claimantDocument: string;
+  dataReviewConfirmed: boolean;
   dataOverrides?: UrbanSketchDataOverrides;
   showBuilding: boolean;
   approximationNotice: boolean;
@@ -148,6 +149,7 @@ export const defaultUrbanSketchSettings: UrbanSketchSettings = {
   bci: "",
   sketchNumber: "001",
   claimantDocument: "",
+  dataReviewConfirmed: false,
   showBuilding: true,
   approximationNotice: true,
   vertexOffsets: emptyVertexOffsets,
