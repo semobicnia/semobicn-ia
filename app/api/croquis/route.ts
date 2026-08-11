@@ -184,6 +184,7 @@ export async function POST(request: Request) {
       typeof settings.bci !== "string" ||
       typeof settings.sketchNumber !== "string" ||
       typeof settings.claimantDocument !== "string" ||
+      typeof settings.dataReviewConfirmed !== "boolean" ||
       (settings.dataOverrides !== undefined &&
         !validDataOverrides(settings.dataOverrides)) ||
       typeof settings.showBuilding !== "boolean" ||
