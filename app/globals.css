@@ -1843,6 +1843,34 @@ button:disabled {
 .croqui-drawer-trigger {
   width: 100%;
   justify-content: center;
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease,
+    color 240ms ease,
+    border-color 240ms ease,
+    background-color 240ms ease;
+}
+
+.button.secondary.croqui-drawer-trigger.needs-review {
+  border-color: #b91c1c;
+  color: white;
+  background: #dc2626;
+  box-shadow: 0 8px 20px rgb(185 28 28 / 20%);
+}
+
+.button.secondary.croqui-drawer-trigger.needs-review:hover {
+  background: #b91c1c;
+}
+
+.button.secondary.croqui-drawer-trigger.is-reviewed {
+  border-color: #166534;
+  color: white;
+  background: #15803d;
+  box-shadow: 0 8px 20px rgb(21 128 61 / 20%);
+}
+
+.button.secondary.croqui-drawer-trigger.is-reviewed:hover {
+  background: #166534;
 }
 
 .croqui-drawer-body {
